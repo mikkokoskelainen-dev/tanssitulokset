@@ -17,22 +17,36 @@ import time
 import pathlib
 import urllib.error
 import urllib.request
-from urllib.parse import urljoin
+from urllib.parse import quote, urljoin, urlsplit, urlunsplit
 
 BASE = "https://results.dancesport.fi"
 OUT = pathlib.Path("data/raw")
 
 # Kohteliaisuusasetukset: yksi pyynto sekunnissa ja tunnistautuva User-Agent,
+# jossa on omat yhteystietosi. VAIHDA sahkopostiosoite omaksesi.
 DELAY = 1.0
-UA = "tanssitulokset-analyysi/0.1 (+mikko.koskelainen@gmail.com)"
+UA = "tanssitulokset-analyysi/0.1 (+mikko@esimerkki.fi)"
 
 # Loytaa kaikki linkit, jotka osoittavat index.html-sivulle (luokkasivut).
 LINK_RE = re.compile(rb'href\s*=\s*["\']([^"\']*?index\.html)["\']', re.IGNORECASE)
 
 
+def encode_url(url):
+    """TPS kayttaa kansionimissa valilyonteja ja aakkosia. Ne pitaa
+    muuntaa prosenttikoodiksi (%20), ennen kuin urllib suostuu hakemaan."""
+    parts = urlsplit(url)
+    return urlunsplit((
+        parts.scheme,
+        parts.netloc,
+        quote(parts.path, safe="/%"),
+        quote(parts.query, safe="=&%"),
+        "",
+    ))
+
+
 def fetch(url):
     """Hakee URLin. Palauttaa tavut, tai None jos sivua ei ole."""
-    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    req = urllib.request.Request(encode_url(url), headers={"User-Agent": UA})
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             return resp.read()
