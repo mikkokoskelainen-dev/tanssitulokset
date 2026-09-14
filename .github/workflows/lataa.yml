@@ -1,0 +1,24 @@
+name: Lataa tulokset
+on:
+  workflow_dispatch:
+    inputs:
+      alku:
+        description: "Ensimmäinen kilpailunumero"
+        default: "890"
+      loppu:
+        description: "Viimeinen kilpailunumero"
+        default: "920"
+permissions:
+  contents: write
+jobs:
+  lataa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scrape.py ${{ inputs.alku }} ${{ inputs.loppu }}
+      - run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add -A
+          git commit -m "Ladattu ${{ inputs.alku }}-${{ inputs.loppu }}" || echo "ei muutoksia"
+          git push
