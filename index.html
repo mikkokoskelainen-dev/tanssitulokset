@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tanssikilpailutulokset</title>
+<style>
+  :root {
+    --muste: #17181c;
+    --hailea: #6b6f7a;
+    --tausta: #f2f2ef;
+    --paperi: #ffffff;
+    --viiva: #d9d9d4;
+    --vakio: #2f4b7c;   /* vakiotanssit */
+    --latin: #a8442a;   /* latinalaiset */
+    --korostus: #2f4b7c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--tausta);
+    color: var(--muste);
+    font: 15px/1.5 "Helvetica Neue", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    border-bottom: 1px solid var(--viiva);
+    background: var(--paperi);
+    padding: 18px 20px 14px;
+  }
+  h1 { font-size: 19px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+  #tila { color: var(--hailea); font-size: 13px; margin-top: 3px; }
+  main { max-width: 1080px; margin: 0 auto; padding: 20px; }
+
+  .valikko { display: flex; gap: 2px; margin-bottom: 18px; flex-wrap: wrap; }
+  .valikko button {
+    font: inherit; padding: 7px 14px; border: 1px solid var(--viiva);
+    background: var(--paperi); color: var(--hailea); cursor: pointer; border-radius: 3px;
+  }
+  .valikko button[aria-selected="true"] {
+    background: var(--korostus); border-color: var(--korostus); color: #fff;
+  }
+  .rivi { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+  input[type="search"], select {
+    font: inherit; padding: 7px 10px; border: 1px solid var(--viiva);
+    border-radius: 3px; background: var(--paperi); color: var(--muste); min-width: 220px;
+  }
+  input:focus-visible, select:focus-visible, button:focus-visible, tr:focus-visible {
+    outline: 2px solid var(--korostus); outline-offset: 1px;
+  }
+
+  table { border-collapse: collapse; width: 100%; background: var(--paperi); font-size: 14px; }
+  .kaari { border: 1px solid var(--viiva); border-radius: 3px; overflow-x: auto; margin-bottom: 20px; }
+  th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--viiva); white-space: nowrap; }
+  th { font-weight: 600; font-size: 12px; color: var(--hailea); background: #fafaf8; position: sticky; top: 0; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr.klikattava { cursor: pointer; }
+  tbody tr.klikattava:hover { background: #f6f6f3; }
+  .luku { text-align: center; font-variant-numeric: tabular-nums; }
+  .risti { color: var(--hailea); }
+  .sija { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .vaimea { color: var(--hailea); }
+  h2 { font-size: 15px; font-weight: 600; margin: 22px 0 8px; }
+  h2 .vaimea { font-weight: 400; }
+  .tyhja { padding: 28px 20px; color: var(--hailea); background: var(--paperi);
+           border: 1px dashed var(--viiva); border-radius: 3px; }
+  .takaisin { font: inherit; background: none; border: 0; color: var(--korostus);
+              cursor: pointer; padding: 0; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Tanssikilpailutulokset</h1>
+  <div id="tila">Ladataan tietokantaa…</div>
+</header>
+
+<main>
+  <div class="valikko" role="tablist">
+    <button role="tab" data-nakyma="pari" aria-selected="true">Pari tai tanssija</button>
+    <button role="tab" data-nakyma="tuomari" aria-selected="false">Tuomari</button>
+    <button role="tab" data-nakyma="kilpailu" aria-selected="false">Kilpailu</button>
+  </div>
+  <div id="ohjaimet" class="rivi"></div>
+  <div id="sisalto"></div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+<script>
+const KANTA = "data/tulokset.sqlite";
+let db = null;
+let nakyma = "pari";
+
+const $ohjaimet = document.getElementById("ohjaimet");
+const $sisalto = document.getElementById("sisalto");
+const $tila = document.getElementById("tila");
+
+// --- apurit ----------------------------------------------------------------
+
+function kysely(sql, params = []) {
+  const stmt = db.prepare(sql);
+  stmt.bind(params);
+  const rivit = [];
+  while (stmt.step()) rivit.push(stmt.getAsObject());
+  stmt.free();
+  return rivit;
+}
+
+function teksti(s) {
+  return String(s ?? "").replace(/[&<>"]/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+function pvmSuomeksi(iso) {
+  if (!iso) return "";
+  const [v, k, p] = iso.split("-");
+  return `${Number(p)}.${Number(k)}.${v}`;
+}
+
+function taulukko(otsikot, rivit, asetukset = {}) {
+  if (!rivit.length) return `<div class="tyhja">${teksti(asetukset.tyhja || "Ei osumia.")}</div>`;
+  const thead = otsikot.map(o => `<th>${teksti(o)}</th>`).join("");
+  const tbody = rivit.map((solut, i) => {
+    const attr = asetukset.klikki
+      ? ` class="klikattava" tabindex="0" data-i="${i}"` : "";
+    return `<tr${attr}>${solut.join("")}</tr>`;
+  }).join("");
+  return `<div class="kaari"><table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table></div>`;
+}
+
+function solu(arvo, luokka = "") {
+  return `<td${luokka ? ` class="${luokka}"` : ""}>${teksti(arvo)}</td>`;
+}
+
+function merkintaSolu(arvo) {
+  if (!arvo) return `<td class="luku vaimea">·</td>`;
+  const risti = !/^\d/.test(arvo);
+  return `<td class="luku${risti ? " risti" : ""}">${teksti(arvo)}</td>`;
+}
+
+function sidoKlikit(kasittelija) {
+  $sisalto.querySelectorAll("tr.klikattava").forEach(tr => {
+    const aja = () => kasittelija(Number(tr.dataset.i));
+    tr.addEventListener("click", aja);
+    tr.addEventListener("keydown", e => { if (e.key === "Enter") aja(); });
+  });
+}
+
+// --- näkymä: pari tai tanssija ---------------------------------------------
+
+function nakymaPari() {
+  $ohjaimet.innerHTML = `
+    <input type="search" id="haku" placeholder="Kirjoita nimi, esim. Kajala" autocomplete="off">
+    <span class="vaimea">Hakee sekä tanssijan että parin nimestä</span>`;
+  $sisalto.innerHTML = `<div class="tyhja">Kirjoita nimi hakukenttään.</div>`;
+
+  let viive;
+  document.getElementById("haku").addEventListener("input", e => {
+    clearTimeout(viive);
+    const hakusana = e.target.value.trim();
+    viive = setTimeout(() => hae(hakusana), 180);
+  });
+}
+
+function hae(hakusana) {
+  if (hakusana.length < 2) {
+    $sisalto.innerHTML = `<div class="tyhja">Kirjoita vähintään kaksi merkkiä.</div>`;
+    return;
+  }
+  const osumat = kysely(`
+    SELECT p.id, p.nimi AS pari, p.seura, p.numero,
+           l.id AS luokka_id, l.nimi AS luokka, l.pvm,
+           k.nimi AS kilpailu, t.sija_raw
+    FROM pari p
+    JOIN luokka l ON l.id = p.luokka_id
+    JOIN kilpailu k ON k.id = l.kilpailu_id
+    LEFT JOIN tulos t ON t.pari_id = p.id
+    WHERE lower(p.nimi) LIKE lower(?)
+    ORDER BY l.pvm DESC, l.nimi
+    LIMIT 300`, [`%${hakusana}%`]);
+
+  $sisalto.innerHTML = taulukko(
+    ["Päivä", "Kilpailu", "Luokka", "Pari", "Seura", "Sija"],
+    osumat.map(r => [
+      solu(pvmSuomeksi(r.pvm)), solu(r.kilpailu), solu(r.luokka),
+      solu(r.pari), solu(r.seura), solu(r.sija_raw || "–", "sija"),
+    ]),
+    { klikki: true, tyhja: "Ei osumia tällä nimellä." });
+
+  sidoKlikit(i => naytaPari(osumat[i]));
+}
+
+function naytaPari(rivi) {
+  const merkinnat = kysely(`
+    SELECT m.kierros, m.tanssi, m.kirjain, m.arvo, tu.nimi AS tuomari
+    FROM merkinta m LEFT JOIN tuomari tu ON tu.id = m.tuomari_id
+    WHERE m.pari_id = ?`, [rivi.id]);
+
+  $sisalto.innerHTML =
+    `<button class="takaisin" id="takaisin">← Takaisin hakutuloksiin</button>` +
+    `<h2>${teksti(rivi.pari)} <span class="vaimea">· ${teksti(rivi.luokka)}, ${teksti(rivi.kilpailu)} ${pvmSuomeksi(rivi.pvm)}</span></h2>` +
+    merkintaRuudukko(merkinnat);
+
+  document.getElementById("takaisin")
+    .addEventListener("click", () => hae(document.getElementById("haku").value.trim()));
+}
+
+/** Rakentaa taulukon: rivit = kierros × tanssi, sarakkeet = tuomarit. */
+function merkintaRuudukko(merkinnat) {
+  if (!merkinnat.length) return `<div class="tyhja">Merkintöjä ei löytynyt.</div>`;
+
+  const kirjaimet = [...new Set(merkinnat.map(m => m.kirjain))].sort();
+  const nimet = {};
+  merkinnat.forEach(m => { if (m.tuomari) nimet[m.kirjain] = m.tuomari; });
+
+  const parit = [...new Set(merkinnat.map(m => `${m.kierros}\u0000${m.tanssi}`))];
+  const kartta = {};
+  merkinnat.forEach(m => { kartta[`${m.kierros}\u0000${m.tanssi}\u0000${m.kirjain}`] = m.arvo; });
+
+  const rivit = parit.map(avain => {
+    const [kierros, tanssi] = avain.split("\u0000");
+    return [solu(kierros), solu(tanssi),
+      ...kirjaimet.map(kirj => merkintaSolu(kartta[`${avain}\u0000${kirj}`]))];
+  });
+
+  const otsikot = ["Kierros", "Tanssi",
+    ...kirjaimet.map(k => nimet[k] ? `${k} · ${nimet[k]}` : k)];
+  return taulukko(otsikot, rivit);
+}
+
+// --- näkymä: tuomari --------------------------------------------------------
+
+function nakymaTuomari() {
+  const tuomarit = kysely(`
+    SELECT tu.id, tu.nimi, COUNT(*) AS n
+    FROM tuomari tu JOIN merkinta m ON m.tuomari_id = tu.id
+    GROUP BY tu.id ORDER BY tu.nimi`);
+  const kaudet = kysely(`
+    SELECT DISTINCT substr(pvm, 1, 4) AS vuosi FROM luokka
+    WHERE pvm IS NOT NULL ORDER BY vuosi DESC`);
+
+  $ohjaimet.innerHTML = `
+    <select id="tuomari">
+      <option value="">Valitse tuomari…</option>
+      ${tuomarit.map(t => `<option value="${t.id}">${teksti(t.nimi)} (${t.n})</option>`).join("")}
+    </select>
+    <select id="vuosi">
+      <option value="">Kaikki vuodet</option>
+      ${kaudet.map(v => `<option value="${v.vuosi}">${v.vuosi}</option>`).join("")}
+    </select>`;
+  $sisalto.innerHTML = `<div class="tyhja">Valitse tuomari nähdäksesi hänen antamansa merkinnät.</div>`;
+
+  const paivita = () => {
+    const id = document.getElementById("tuomari").value;
+    const vuosi = document.getElementById("vuosi").value;
+    if (id) naytaTuomari(Number(id), vuosi);
+  };
+  document.getElementById("tuomari").addEventListener("change", paivita);
+  document.getElementById("vuosi").addEventListener("change", paivita);
+}
+
+function naytaTuomari(id, vuosi) {
+  const ehto = vuosi ? "AND substr(l.pvm,1,4) = ?" : "";
+  const params = vuosi ? [id, vuosi] : [id];
+
+  const yhteenveto = kysely(`
+    SELECT COUNT(DISTINCT l.id) AS luokkia, COUNT(*) AS merkintoja,
+           SUM(CASE WHEN m.sijoitus IS NULL THEN 1 ELSE 0 END) AS risteja
+    FROM merkinta m JOIN luokka l ON l.id = m.luokka_id
+    WHERE m.tuomari_id = ? ${ehto}`, params)[0];
+
+  const rivit = kysely(`
+    SELECT l.pvm, k.nimi AS kilpailu, l.nimi AS luokka, p.nimi AS pari, p.seura,
+           m.kierros, m.tanssi, m.arvo, t.sija_raw
+    FROM merkinta m
+    JOIN luokka l ON l.id = m.luokka_id
+    JOIN kilpailu k ON k.id = l.kilpailu_id
+    JOIN pari p ON p.id = m.pari_id
+    LEFT JOIN tulos t ON t.pari_id = p.id
+    WHERE m.tuomari_id = ? ${ehto}
+    ORDER BY l.pvm DESC, l.nimi, p.nimi, m.kierros, m.tanssi
+    LIMIT 1000`, params);
+
+  $sisalto.innerHTML =
+    `<h2>${yhteenveto.merkintoja} merkintää <span class="vaimea">· ${yhteenveto.luokkia} luokassa, joista ${yhteenveto.risteja} ristiä</span></h2>` +
+    taulukko(
+      ["Päivä", "Kilpailu", "Luokka", "Pari", "Kierros", "Tanssi", "Merkintä", "Parin sija"],
+      rivit.map(r => [
+        solu(pvmSuomeksi(r.pvm)), solu(r.kilpailu), solu(r.luokka), solu(r.pari),
+        solu(r.kierros), solu(r.tanssi), merkintaSolu(r.arvo),
+        solu(r.sija_raw || "–", "sija"),
+      ]),
+      { tyhja: "Ei merkintöjä tällä rajauksella." });
+}
+
+// --- näkymä: kilpailu -------------------------------------------------------
+
+function nakymaKilpailu() {
+  const kilpailut = kysely(`
+    SELECT k.id, k.nimi, k.pvm FROM kilpailu k ORDER BY k.pvm DESC, k.id DESC`);
+
+  $ohjaimet.innerHTML = `
+    <select id="kilpailu">
+      <option value="">Valitse kilpailu…</option>
+      ${kilpailut.map(k =>
+        `<option value="${k.id}">${pvmSuomeksi(k.pvm)} — ${teksti(k.nimi)}</option>`).join("")}
+    </select>`;
+  $sisalto.innerHTML = `<div class="tyhja">Valitse kilpailu nähdäksesi sen luokat.</div>`;
+
+  document.getElementById("kilpailu").addEventListener("change", e => {
+    if (e.target.value) naytaKilpailu(Number(e.target.value));
+  });
+}
+
+function naytaKilpailu(id) {
+  const luokat = kysely(`
+    SELECT l.id, l.nro, l.nimi, l.pvm,
+           (SELECT COUNT(*) FROM pari p WHERE p.luokka_id = l.id) AS pareja
+    FROM luokka l WHERE l.kilpailu_id = ? ORDER BY l.nro`, [id]);
+
+  $sisalto.innerHTML = taulukko(
+    ["Nro", "Luokka", "Päivä", "Pareja"],
+    luokat.map(l => [
+      solu(l.nro, "luku"), solu(l.nimi), solu(pvmSuomeksi(l.pvm)), solu(l.pareja, "luku"),
+    ]),
+    { klikki: true, tyhja: "Tässä kilpailussa ei ole luettuja luokkia." });
+
+  sidoKlikit(i => naytaLuokka(luokat[i], id));
+}
+
+function naytaLuokka(luokka, kilpailuId) {
+  const tulokset = kysely(`
+    SELECT p.id, p.numero, p.nimi, p.seura, t.sija, t.sija_raw
+    FROM pari p LEFT JOIN tulos t ON t.pari_id = p.id
+    WHERE p.luokka_id = ?
+    ORDER BY CASE WHEN t.sija IS NULL THEN 1 ELSE 0 END, t.sija, p.numero`, [luokka.id]);
+
+  const tuomarit = kysely(`
+    SELECT lt.kirjain, tu.nimi FROM luokan_tuomari lt
+    JOIN tuomari tu ON tu.id = lt.tuomari_id
+    WHERE lt.luokka_id = ? ORDER BY lt.kirjain`, [luokka.id]);
+
+  $sisalto.innerHTML =
+    `<button class="takaisin" id="takaisin">← Takaisin luokkalistaan</button>` +
+    `<h2>${teksti(luokka.nimi)} <span class="vaimea">· tuomarit ${tuomarit.map(t => `${t.kirjain} ${t.nimi}`).join(", ") || "ei tiedossa"}</span></h2>` +
+    taulukko(
+      ["Sija", "Nro", "Pari", "Seura"],
+      tulokset.map(r => [
+        solu(r.sija_raw || "–", "sija"), solu(r.numero, "luku"),
+        solu(r.nimi), solu(r.seura),
+      ]),
+      { klikki: true, tyhja: "Luokassa ei ole pareja." });
+
+  sidoKlikit(i => {
+    const p = tulokset[i];
+    const merkinnat = kysely(`
+      SELECT m.kierros, m.tanssi, m.kirjain, m.arvo, tu.nimi AS tuomari
+      FROM merkinta m LEFT JOIN tuomari tu ON tu.id = m.tuomari_id
+      WHERE m.pari_id = ?`, [p.id]);
+    $sisalto.innerHTML =
+      `<button class="takaisin" id="takaisin">← Takaisin luokkaan</button>` +
+      `<h2>${teksti(p.nimi)} <span class="vaimea">· ${teksti(luokka.nimi)}</span></h2>` +
+      merkintaRuudukko(merkinnat);
+    document.getElementById("takaisin")
+      .addEventListener("click", () => naytaLuokka(luokka, kilpailuId));
+  });
+
+  document.getElementById("takaisin")
+    .addEventListener("click", () => naytaKilpailu(kilpailuId));
+}
+
+// --- käynnistys -------------------------------------------------------------
+
+const nakymat = { pari: nakymaPari, tuomari: nakymaTuomari, kilpailu: nakymaKilpailu };
+
+document.querySelectorAll(".valikko button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".valikko button")
+      .forEach(b => b.setAttribute("aria-selected", String(b === btn)));
+    nakyma = btn.dataset.nakyma;
+    nakymat[nakyma]();
+  });
+});
+
+async function kaynnista() {
+  try {
+    const SQL = await initSqlJs({
+      locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${f}`
+    });
+    const vastaus = await fetch(KANTA);
+    if (!vastaus.ok) throw new Error(`tietokantaa ei löytynyt (${vastaus.status})`);
+    db = new SQL.Database(new Uint8Array(await vastaus.arrayBuffer()));
+
+    const n = kysely(`
+      SELECT (SELECT COUNT(*) FROM kilpailu) AS kilpailuja,
+             (SELECT COUNT(*) FROM luokka)   AS luokkia,
+             (SELECT COUNT(*) FROM merkinta) AS merkintoja,
+             (SELECT COUNT(*) FROM tuomari)  AS tuomareita`)[0];
+    $tila.textContent =
+      `${n.kilpailuja} kilpailua · ${n.luokkia} luokkaa · ${n.merkintoja} merkintää · ${n.tuomareita} tuomaria`;
+
+    nakymat[nakyma]();
+  } catch (virhe) {
+    $tila.textContent = "Tietokantaa ei voitu avata.";
+    $sisalto.innerHTML =
+      `<div class="tyhja">Tietokannan lataus epäonnistui: ${teksti(virhe.message)}.<br>
+       Tarkista että tiedosto <code>${KANTA}</code> on julkaistu sivuston mukana.</div>`;
+  }
+}
+
+kaynnista();
+</script>
+</body>
+</html>
