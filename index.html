@@ -450,7 +450,10 @@ function naytaKilpailu(id) {
 
 function naytaLuokka(luokka, kilpailuId) {
   const tulokset = kysely(`
-    SELECT p.id, p.numero, p.nimi, p.seura, t.sija, t.sija_raw
+    SELECT p.id, p.numero, p.nimi, p.seura, t.sija, t.sija_raw,
+           (SELECT SUM(m.sijoitus) FROM merkinta m WHERE m.pari_id = p.id) AS pisteet,
+           (SELECT COUNT(*) FROM merkinta m WHERE m.pari_id = p.id
+             AND m.sijoitus IS NULL) AS risteja
     FROM pari p LEFT JOIN tulos t ON t.pari_id = p.id
     WHERE p.luokka_id = ?
     ORDER BY CASE WHEN t.sija IS NULL THEN 1 ELSE 0 END, t.sija, p.numero`, [luokka.id]);
@@ -464,10 +467,12 @@ function naytaLuokka(luokka, kilpailuId) {
     `<button class="takaisin" id="takaisin">← Takaisin luokkalistaan</button>` +
     `<h2>${teksti(luokka.nimi)} <span class="vaimea">· tuomarit ${tuomarit.map(t => `${t.kirjain} ${t.nimi}`).join(", ") || "ei tiedossa"}</span></h2>` +
     taulukko(
-      ["Sija", "Nro", "Pari", "Seura"],
+      ["Sija", "Nro", "Pari", "Seura", "Pisteet", "Ristejä"],
       tulokset.map(r => [
         solu(r.sija_raw || "–", "sija"), solu(r.numero, "luku"),
         solu(r.nimi), solu(r.seura),
+        solu(r.pisteet ?? "·", r.pisteet ? "sija luku" : "luku vaimea"),
+        solu(r.risteja || "·", r.risteja ? "luku" : "luku vaimea"),
       ]),
       { klikki: true, tyhja: "Luokassa ei ole pareja." });
 
