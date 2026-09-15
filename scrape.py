@@ -25,7 +25,7 @@ OUT = pathlib.Path("data/raw")
 # Kohteliaisuusasetukset: yksi pyynto sekunnissa ja tunnistautuva User-Agent,
 # jossa on omat yhteystietosi. VAIHDA sahkopostiosoite omaksesi.
 DELAY = 1.0
-UA = "tanssitulokset-analyysi/0.1 (+mikko@esimerkki.fi)"
+UA = "tanssitulokset-analyysi/0.1 (+mikko@valssaamo.com)"
 
 # Loytaa kaikki linkit, jotka osoittavat index.html-sivulle (luokkasivut).
 LINK_RE = re.compile(rb'href\s*=\s*["\']([^"\']*?index\.html)["\']', re.IGNORECASE)
