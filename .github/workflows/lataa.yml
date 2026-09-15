@@ -10,7 +10,7 @@ on:
         default: "890"
       loppu:
         description: "Viimeinen kilpailunumero"
-        default: "920"
+        default: "1000"
 permissions:
   contents: write
 jobs:
