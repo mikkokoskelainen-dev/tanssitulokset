@@ -205,7 +205,8 @@ function naytaPari(rivi) {
     .addEventListener("click", () => hae(document.getElementById("haku").value.trim()));
 }
 
-/** Rakentaa taulukon: rivit = kierros × tanssi, sarakkeet = tuomarit. */
+/** Rakentaa taulukon: rivit = kierros × tanssi, sarakkeet = tuomarit.
+    Viimeisenä sarakkeena sijalukupisteet eli tuomarien sijoitusten summa. */
 function merkintaRuudukko(merkinnat) {
   if (!merkinnat.length) return `<div class="tyhja">Merkintöjä ei löytynyt.</div>`;
 
@@ -217,23 +218,69 @@ function merkintaRuudukko(merkinnat) {
   const kartta = {};
   merkinnat.forEach(m => { kartta[`${m.kierros}\u0000${m.tanssi}\u0000${m.kirjain}`] = m.arvo; });
 
-  const rivit = parit.map(avain => {
+  const rivit = [];
+  const summat = {};          // kierros -> koko kierroksen pistesumma
+  const ristit = {};          // kierros -> ristien määrä, jos kyse karsinnasta
+
+  parit.forEach((avain, i) => {
     const [kierros, tanssi] = avain.split("\u0000");
-    return [solu(kierros), solu(tanssi),
-      ...kirjaimet.map(kirj => merkintaSolu(kartta[`${avain}\u0000${kirj}`]))];
+    let summa = 0, numeroita = 0, risteja = 0;
+
+    const solut = kirjaimet.map(kirj => {
+      const arvo = kartta[`${avain}\u0000${kirj}`];
+      if (arvo) {
+        if (/^\d/.test(arvo)) { summa += parseInt(arvo, 10); numeroita++; }
+        else risteja++;
+      }
+      return merkintaSolu(arvo);
+    });
+
+    const piste = numeroita ? String(summa) : (risteja ? `${risteja} ✕` : "");
+    if (numeroita) summat[kierros] = (summat[kierros] || 0) + summa;
+    if (risteja) ristit[kierros] = (ristit[kierros] || 0) + risteja;
+
+    rivit.push([solu(kierros), solu(tanssi), ...solut, solu(piste, "sija luku")]);
+
+    // Kierroksen vaihtuessa (tai lopussa) yhteissumma omalle rivilleen
+    const seuraava = parit[i + 1];
+    const viimeinen = !seuraava || seuraava.split("\u0000")[0] !== kierros;
+    if (viimeinen) {
+      const yht = summat[kierros] !== undefined
+        ? String(summat[kierros])
+        : (ristit[kierros] ? `${ristit[kierros]} ✕` : "");
+      rivit.push([
+        solu(""), solu("Yhteensä", "vaimea"),
+        ...kirjaimet.map(() => solu("")),
+        solu(yht, "sija luku"),
+      ]);
+    }
   });
 
   const otsikot = ["Kierros", "Tanssi",
-    ...kirjaimet.map(k => nimet[k] ? `${k} · ${nimet[k]}` : k)];
+    ...kirjaimet.map(k => nimet[k] ? `${k} · ${nimet[k]}` : k),
+    "Pisteet"];
   return taulukko(otsikot, rivit);
 }
+
+/** Päättelee kilpailun tason sen nimestä. TPS ei tallenna tasoa erikseen,
+    mutta se on käytännössä aina luettavissa kilpailun nimestä. */
+function taso(nimi) {
+  const n = (nimi || "").toLowerCase();
+  if (/\bsm\b|suomen mestaruus|suomenmestaruus/.test(n)) return "SM";
+  if (/\bgp\b|grand prix/.test(n)) return "GP";
+  if (/ikm|ikäkausi|ikakausi/.test(n)) return "IKM";
+  if (/seurakilpailu|seuraottelu/.test(n)) return "Seura";
+  return "Muu";
+}
+
+const TASOT = ["SM", "GP", "IKM", "Muu", "Seura"];
 
 // --- näkymä: tuomari --------------------------------------------------------
 
 function nakymaTuomari() {
   const tuomarit = kysely(`
     SELECT tu.id, tu.nimi, COUNT(*) AS n
-    FROM tuomari tu JOIN merkinta m ON m.tuomari_id = tu.id
+    FROM tuomari tu JOIN luokan_tuomari lt ON lt.tuomari_id = tu.id
     GROUP BY tu.id ORDER BY tu.nimi`);
   const kaudet = kysely(`
     SELECT DISTINCT substr(pvm, 1, 4) AS vuosi FROM luokka
@@ -245,10 +292,10 @@ function nakymaTuomari() {
       ${tuomarit.map(t => `<option value="${t.id}">${teksti(t.nimi)} (${t.n})</option>`).join("")}
     </select>
     <select id="vuosi">
-      <option value="">Kaikki vuodet</option>
-      ${kaudet.map(v => `<option value="${v.vuosi}">${v.vuosi}</option>`).join("")}
+      <option value="">Merkinnät: kaikki vuodet</option>
+      ${kaudet.map(v => `<option value="${v.vuosi}">Merkinnät: ${v.vuosi}</option>`).join("")}
     </select>`;
-  $sisalto.innerHTML = `<div class="tyhja">Valitse tuomari nähdäksesi hänen antamansa merkinnät.</div>`;
+  $sisalto.innerHTML = `<div class="tyhja">Valitse tuomari nähdäksesi tilaston ja merkinnät.</div>`;
 
   const paivita = () => {
     const id = document.getElementById("tuomari").value;
@@ -257,6 +304,52 @@ function nakymaTuomari() {
   };
   document.getElementById("tuomari").addEventListener("change", paivita);
   document.getElementById("vuosi").addEventListener("change", paivita);
+}
+
+/** Vuosittainen tuomarointimäärä ja jakauma kilpailun tason mukaan.
+    Yksi tuomarointi = yksi luokka, jossa tuomari on ollut tuomaristossa. */
+function tuomariTilasto(id) {
+  const rivit = kysely(`
+    SELECT substr(l.pvm, 1, 4) AS vuosi, k.id AS kilpailu_id, k.nimi AS kilpailu,
+           COUNT(DISTINCT l.id) AS luokkia
+    FROM luokan_tuomari lt
+    JOIN luokka l ON l.id = lt.luokka_id
+    JOIN kilpailu k ON k.id = l.kilpailu_id
+    WHERE lt.tuomari_id = ?
+    GROUP BY substr(l.pvm, 1, 4), k.id`, [id]);
+
+  if (!rivit.length) return `<div class="tyhja">Tuomarointeja ei löytynyt.</div>`;
+
+  const vuodet = {};
+  rivit.forEach(r => {
+    const v = r.vuosi || "?";
+    if (!vuodet[v]) vuodet[v] = { kilpailuja: 0, luokkia: 0, tasot: {} };
+    vuodet[v].kilpailuja += 1;
+    vuodet[v].luokkia += r.luokkia;
+    const t = taso(r.kilpailu);
+    vuodet[v].tasot[t] = (vuodet[v].tasot[t] || 0) + r.luokkia;
+  });
+
+  const jarjestys = Object.keys(vuodet).sort().reverse();
+  const yht = { kilpailuja: 0, luokkia: 0, tasot: {} };
+
+  const taulukkorivit = jarjestys.map(v => {
+    const d = vuodet[v];
+    yht.kilpailuja += d.kilpailuja;
+    yht.luokkia += d.luokkia;
+    TASOT.forEach(t => { if (d.tasot[t]) yht.tasot[t] = (yht.tasot[t] || 0) + d.tasot[t]; });
+    return [
+      solu(v), solu(d.kilpailuja, "luku"), solu(d.luokkia, "luku"),
+      ...TASOT.map(t => solu(d.tasot[t] || "·", d.tasot[t] ? "luku" : "luku vaimea")),
+    ];
+  });
+
+  taulukkorivit.push([
+    solu("Yhteensä", "vaimea"), solu(yht.kilpailuja, "sija luku"), solu(yht.luokkia, "sija luku"),
+    ...TASOT.map(t => solu(yht.tasot[t] || "·", yht.tasot[t] ? "sija luku" : "luku vaimea")),
+  ]);
+
+  return taulukko(["Vuosi", "Kilpailuja", "Luokkia", ...TASOT], taulukkorivit);
 }
 
 function naytaTuomari(id, vuosi) {
@@ -282,7 +375,9 @@ function naytaTuomari(id, vuosi) {
     LIMIT 1000`, params);
 
   $sisalto.innerHTML =
-    `<h2>${yhteenveto.merkintoja} merkintää <span class="vaimea">· ${yhteenveto.luokkia} luokassa, joista ${yhteenveto.risteja} ristiä</span></h2>` +
+    `<h2>Tuomaroinnit vuosittain <span class="vaimea">· luokkien määrä kilpailun tason mukaan</span></h2>` +
+    tuomariTilasto(id) +
+    `<h2>Merkinnät${vuosi ? " " + vuosi : ""} <span class="vaimea">· ${yhteenveto.merkintoja} kpl, joista ${yhteenveto.risteja} ristiä</span></h2>` +
     taulukko(
       ["Päivä", "Kilpailu", "Luokka", "Pari", "Kierros", "Tanssi", "Merkintä", "Parin sija"],
       rivit.map(r => [
@@ -296,18 +391,43 @@ function naytaTuomari(id, vuosi) {
 // --- näkymä: kilpailu -------------------------------------------------------
 
 function nakymaKilpailu() {
-  const kilpailut = kysely(`
-    SELECT k.id, k.nimi, k.pvm FROM kilpailu k ORDER BY k.pvm DESC, k.id DESC`);
+  const vuodet = kysely(`
+    SELECT substr(pvm, 1, 4) AS vuosi, COUNT(*) AS n
+    FROM kilpailu WHERE pvm IS NOT NULL
+    GROUP BY vuosi ORDER BY vuosi DESC`);
+  const ilmanPvm = kysely(`SELECT COUNT(*) AS n FROM kilpailu WHERE pvm IS NULL`)[0].n;
 
   $ohjaimet.innerHTML = `
-    <select id="kilpailu">
-      <option value="">Valitse kilpailu…</option>
-      ${kilpailut.map(k =>
-        `<option value="${k.id}">${pvmSuomeksi(k.pvm)} — ${teksti(k.nimi)}</option>`).join("")}
-    </select>`;
+    <select id="vuosi">
+      ${vuodet.map((v, i) =>
+        `<option value="${v.vuosi}"${i === 0 ? " selected" : ""}>${v.vuosi} (${v.n})</option>`).join("")}
+      ${ilmanPvm ? `<option value="tuntematon">Ilman päivämäärää (${ilmanPvm})</option>` : ""}
+    </select>
+    <select id="kilpailu"></select>`;
   $sisalto.innerHTML = `<div class="tyhja">Valitse kilpailu nähdäksesi sen luokat.</div>`;
 
-  document.getElementById("kilpailu").addEventListener("change", e => {
+  const $vuosi = document.getElementById("vuosi");
+  const $kilpailu = document.getElementById("kilpailu");
+
+  function taytaKilpailut() {
+    const vuosi = $vuosi.value;
+    const kilpailut = vuosi === "tuntematon"
+      ? kysely(`SELECT id, nimi, pvm FROM kilpailu WHERE pvm IS NULL ORDER BY id DESC`)
+      : kysely(`SELECT id, nimi, pvm FROM kilpailu
+                WHERE substr(pvm, 1, 4) = ? ORDER BY pvm DESC, id DESC`, [vuosi]);
+
+    $kilpailu.innerHTML =
+      `<option value="">Valitse kilpailu… (${kilpailut.length})</option>` +
+      kilpailut.map(k => {
+        const paiva = k.pvm ? pvmSuomeksi(k.pvm) + " — " : "";
+        return `<option value="${k.id}">${paiva}${teksti(k.nimi)}</option>`;
+      }).join("");
+    $sisalto.innerHTML = `<div class="tyhja">Valitse kilpailu nähdäksesi sen luokat.</div>`;
+  }
+
+  taytaKilpailut();
+  $vuosi.addEventListener("change", taytaKilpailut);
+  $kilpailu.addEventListener("change", e => {
     if (e.target.value) naytaKilpailu(Number(e.target.value));
   });
 }
