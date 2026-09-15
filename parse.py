@@ -89,6 +89,18 @@ CREATE INDEX i_pari_luokka      ON pari(luokka_id);
 
 OTSIKOT = {"nr", "couple", "country", "round", "sum", "place"}
 
+# Kasin tehtavat nimikorjaukset. Lahdeaineistossa on kirjoitusvirheita ja
+# vaihtelevia kirjoitusasuja; tassa ne yhdistetaan oikeaan muotoon.
+# Vasemmalla lahteessa esiintyva nimi, oikealla oikea nimi.
+KORJAUKSET = {
+    "Jarmo Nuurinen": "Jarmo Nuutinen",
+}
+
+
+def korjaa_nimi(nimi):
+    nimi = " ".join((nimi or "").split())
+    return KORJAUKSET.get(nimi, nimi)
+
 
 # --------------------------------------------------------------------------
 # HTML -> taulukkoruudukko
@@ -285,7 +297,7 @@ class Db:
         self._tanssijat = {}
 
     def tuomari(self, nimi):
-        nimi = " ".join(nimi.split())
+        nimi = korjaa_nimi(nimi)
         if nimi not in self._tuomarit:
             cur = self.con.execute(
                 "INSERT OR IGNORE INTO tuomari (nimi) VALUES (?)", (nimi,))
@@ -297,7 +309,7 @@ class Db:
         return self._tuomarit[nimi]
 
     def tanssija(self, nimi):
-        nimi = " ".join(nimi.split())
+        nimi = korjaa_nimi(nimi)
         if not nimi:
             return None
         if nimi not in self._tanssijat:

@@ -30,6 +30,12 @@
   }
   h1 { font-size: 19px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
   #tila { color: var(--hailea); font-size: 13px; margin-top: 3px; }
+  .johdanto { max-width: 62ch; margin: 12px 0 0; color: #3d4049; font-size: 14px; }
+  .johdanto p { margin: 0 0 6px; }
+  footer { max-width: 1080px; margin: 0 auto; padding: 8px 20px 40px;
+           color: var(--hailea); font-size: 13px; border-top: 1px solid var(--viiva); }
+  footer p { margin: 8px 0; max-width: 70ch; }
+  footer a { color: var(--korostus); }
   main { max-width: 1080px; margin: 0 auto; padding: 20px; }
 
   .valikko { display: flex; gap: 2px; margin-bottom: 18px; flex-wrap: wrap; }
@@ -50,9 +56,16 @@
   }
 
   table { border-collapse: collapse; width: 100%; background: var(--paperi); font-size: 14px; }
-  .kaari { border: 1px solid var(--viiva); border-radius: 3px; overflow-x: auto; margin-bottom: 20px; }
-  th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--viiva); white-space: nowrap; }
-  th { font-weight: 600; font-size: 12px; color: var(--hailea); background: #fafaf8; position: sticky; top: 0; }
+  .kaari { border: 1px solid var(--viiva); border-radius: 3px; overflow-x: auto;
+           margin-bottom: 20px; -webkit-overflow-scrolling: touch; }
+  th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--viiva);
+           vertical-align: top; overflow-wrap: anywhere; }
+  th { font-weight: 600; font-size: 12px; color: var(--hailea); background: #fafaf8;
+       position: sticky; top: 0; white-space: nowrap; }
+  .luku, .sija, .risti { white-space: nowrap; }
+  /* Merkintäruudukko on leveä: siinä sarakkeet pysyvät yhdellä rivillä ja taulukko vierii */
+  .ruudukko table { min-width: max-content; }
+  .ruudukko td { white-space: nowrap; }
   tbody tr:last-child td { border-bottom: 0; }
   tbody tr.klikattava { cursor: pointer; }
   tbody tr.klikattava:hover { background: #f6f6f3; }
@@ -73,6 +86,14 @@
 <header>
   <h1>Tanssikilpailutulokset</h1>
   <div id="tila">Ladataan tietokantaa…</div>
+  <div class="johdanto">
+    <p>Suomalaisten vakio- ja latinalaistanssikilpailujen tulokset yhdessä
+       haettavassa muodossa. Mukana ovat myös tuomarien yksittäiset merkinnät,
+       joita pääsee tarkastelemaan kilpailu kerrallaan tai koko kauden ajalta.</p>
+    <p>Voit etsiä parin tai tanssijan kaikki kilpailut, katsoa yksittäisen
+       tuomarin antamat merkinnät ja tuomarointimäärät vuosittain, tai selata
+       kilpailuja ja niiden luokkia.</p>
+  </div>
 </header>
 
 <main>
@@ -80,10 +101,22 @@
     <button role="tab" data-nakyma="pari" aria-selected="true">Pari tai tanssija</button>
     <button role="tab" data-nakyma="tuomari" aria-selected="false">Tuomari</button>
     <button role="tab" data-nakyma="kilpailu" aria-selected="false">Kilpailu</button>
+    <button role="tab" data-nakyma="tilastot" aria-selected="false">Tilastot</button>
   </div>
   <div id="ohjaimet" class="rivi"></div>
   <div id="sisalto"></div>
 </main>
+
+<footer>
+  <p id="kattavuus"></p>
+  <p>Aineisto on koottu automaattisesti Suomen Tanssiurheiluliiton julkaisemista
+     kilpailutuloksista ja päivittyy viikoittain. Sivusto ei ole virallinen
+     tulospalvelu: viralliset tulokset löytyvät osoitteesta
+     <a href="https://www.dancesport.fi/lajit/vakio-ja-latinalaistanssit/tulokset/kilpailutulokset/">dancesport.fi</a>.</p>
+  <p>Pisteet-sarake on tuomarien antamien sijoitusten summa. Lopullinen sijoitus
+     ratkaistaan skating-säännöillä tanssi kerrallaan, joten pienin pistesumma ei
+     aina tarkoita parasta sijaa.</p>
+</footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
 <script>
@@ -125,7 +158,8 @@ function taulukko(otsikot, rivit, asetukset = {}) {
       ? ` class="klikattava" tabindex="0" data-i="${i}"` : "";
     return `<tr${attr}>${solut.join("")}</tr>`;
   }).join("");
-  return `<div class="kaari"><table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table></div>`;
+  const luokat = "kaari" + (asetukset.ruudukko ? " ruudukko" : "");
+  return `<div class="${luokat}"><table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table></div>`;
 }
 
 function solu(arvo, luokka = "") {
@@ -152,7 +186,7 @@ function nakymaPari() {
   $ohjaimet.innerHTML = `
     <input type="search" id="haku" placeholder="Kirjoita nimi, esim. Kajala" autocomplete="off">
     <span class="vaimea">Hakee sekä tanssijan että parin nimestä</span>`;
-  $sisalto.innerHTML = `<div class="tyhja">Kirjoita nimi hakukenttään.</div>`;
+  $sisalto.innerHTML = `<div class="tyhja">Kirjoita hakukenttään tanssijan tai parin nimi. Haku löytää kaikki kilpailut, joissa nimi esiintyy — myös vanhojen parikokoonpanojen kautta.</div>`;
 
   let viive;
   document.getElementById("haku").addEventListener("input", e => {
@@ -259,7 +293,7 @@ function merkintaRuudukko(merkinnat) {
   const otsikot = ["Kierros", "Tanssi",
     ...kirjaimet.map(k => nimet[k] ? `${k} · ${nimet[k]}` : k),
     "Pisteet"];
-  return taulukko(otsikot, rivit);
+  return taulukko(otsikot, rivit, { ruudukko: true });
 }
 
 /** Päättelee kilpailun tason sen nimestä. TPS ei tallenna tasoa erikseen,
@@ -295,7 +329,7 @@ function nakymaTuomari() {
       <option value="">Merkinnät: kaikki vuodet</option>
       ${kaudet.map(v => `<option value="${v.vuosi}">Merkinnät: ${v.vuosi}</option>`).join("")}
     </select>`;
-  $sisalto.innerHTML = `<div class="tyhja">Valitse tuomari nähdäksesi tilaston ja merkinnät.</div>`;
+  $sisalto.innerHTML = `<div class="tyhja">Valitse tuomari. Näet hänen tuomarointimääränsä vuosittain ja jakauman kilpailun tason mukaan, sekä kaikki hänen antamansa merkinnät.</div>`;
 
   const paivita = () => {
     const id = document.getElementById("tuomari").value;
@@ -352,15 +386,27 @@ function tuomariTilasto(id) {
   return taulukko(["Vuosi", "Kilpailuja", "Luokkia", ...TASOT], taulukkorivit);
 }
 
-function naytaTuomari(id, vuosi) {
-  const ehto = vuosi ? "AND substr(l.pvm,1,4) = ?" : "";
+function naytaTuomari(id, vuosi, kilpailuId) {
+  let ehto = vuosi ? "AND substr(l.pvm,1,4) = ?" : "";
   const params = vuosi ? [id, vuosi] : [id];
+  if (kilpailuId) { ehto += " AND k.id = ?"; params.push(kilpailuId); }
 
   const yhteenveto = kysely(`
     SELECT COUNT(DISTINCT l.id) AS luokkia, COUNT(*) AS merkintoja,
            SUM(CASE WHEN m.sijoitus IS NULL THEN 1 ELSE 0 END) AS risteja
-    FROM merkinta m JOIN luokka l ON l.id = m.luokka_id
+    FROM merkinta m
+    JOIN luokka l ON l.id = m.luokka_id
+    JOIN kilpailu k ON k.id = l.kilpailu_id
     WHERE m.tuomari_id = ? ${ehto}`, params)[0];
+
+  // Kilpailut, joissa tuomari on toiminut (valitulla vuosirajauksella)
+  const kilpailut = kysely(`
+    SELECT DISTINCT k.id, k.nimi, l.pvm
+    FROM luokan_tuomari lt
+    JOIN luokka l ON l.id = lt.luokka_id
+    JOIN kilpailu k ON k.id = l.kilpailu_id
+    WHERE lt.tuomari_id = ? ${vuosi ? "AND substr(l.pvm,1,4) = ?" : ""}
+    ORDER BY l.pvm DESC`, vuosi ? [id, vuosi] : [id]);
 
   const rivit = kysely(`
     SELECT l.pvm, k.nimi AS kilpailu, l.nimi AS luokka, p.nimi AS pari, p.seura,
@@ -378,6 +424,10 @@ function naytaTuomari(id, vuosi) {
     `<h2>Tuomaroinnit vuosittain <span class="vaimea">· luokkien määrä kilpailun tason mukaan</span></h2>` +
     tuomariTilasto(id) +
     `<h2>Merkinnät${vuosi ? " " + vuosi : ""} <span class="vaimea">· ${yhteenveto.merkintoja} kpl, joista ${yhteenveto.risteja} ristiä</span></h2>` +
+    `<div class="rivi"><select id="rajaus">
+       <option value="">Kaikki kilpailut (${kilpailut.length})</option>
+       ${kilpailut.map(k => `<option value="${k.id}"${k.id === kilpailuId ? " selected" : ""}>${pvmSuomeksi(k.pvm)} — ${teksti(k.nimi)}</option>`).join("")}
+     </select></div>` +
     taulukko(
       ["Päivä", "Kilpailu", "Luokka", "Pari", "Kierros", "Tanssi", "Merkintä", "Parin sija"],
       rivit.map(r => [
@@ -386,6 +436,9 @@ function naytaTuomari(id, vuosi) {
         solu(r.sija_raw || "–", "sija"),
       ]),
       { tyhja: "Ei merkintöjä tällä rajauksella." });
+
+  document.getElementById("rajaus").addEventListener("change", e =>
+    naytaTuomari(id, vuosi, e.target.value ? Number(e.target.value) : undefined));
 }
 
 // --- näkymä: kilpailu -------------------------------------------------------
@@ -404,7 +457,7 @@ function nakymaKilpailu() {
       ${ilmanPvm ? `<option value="tuntematon">Ilman päivämäärää (${ilmanPvm})</option>` : ""}
     </select>
     <select id="kilpailu"></select>`;
-  $sisalto.innerHTML = `<div class="tyhja">Valitse kilpailu nähdäksesi sen luokat.</div>`;
+  $sisalto.innerHTML = `<div class="tyhja">Valitse ensin vuosi ja sitten kilpailu. Luokkaa klikkaamalla näet tulokset, ja paria klikkaamalla sen kaikki tuomarimerkinnät.</div>`;
 
   const $vuosi = document.getElementById("vuosi");
   const $kilpailu = document.getElementById("kilpailu");
@@ -422,7 +475,7 @@ function nakymaKilpailu() {
         const paiva = k.pvm ? pvmSuomeksi(k.pvm) + " — " : "";
         return `<option value="${k.id}">${paiva}${teksti(k.nimi)}</option>`;
       }).join("");
-    $sisalto.innerHTML = `<div class="tyhja">Valitse kilpailu nähdäksesi sen luokat.</div>`;
+    $sisalto.innerHTML = `<div class="tyhja">Valitse ensin vuosi ja sitten kilpailu. Luokkaa klikkaamalla näet tulokset, ja paria klikkaamalla sen kaikki tuomarimerkinnät.</div>`;
   }
 
   taytaKilpailut();
@@ -494,9 +547,69 @@ function naytaLuokka(luokka, kilpailuId) {
     .addEventListener("click", () => naytaKilpailu(kilpailuId));
 }
 
+// --- näkymä: tilastot -------------------------------------------------------
+
+function nakymaTilastot() {
+  const vuodet = kysely(`
+    SELECT DISTINCT substr(pvm, 1, 4) AS vuosi FROM luokka
+    WHERE pvm IS NOT NULL ORDER BY vuosi DESC`);
+
+  $ohjaimet.innerHTML = `
+    <select id="tvuosi">
+      ${vuodet.map((v, i) =>
+        `<option value="${v.vuosi}"${i === 0 ? " selected" : ""}>${v.vuosi}</option>`).join("")}
+      <option value="">Kaikki vuodet</option>
+    </select>
+    <span class="vaimea">Eniten tuominneet ensin</span>`;
+
+  const piirra = () => naytaTilastot(document.getElementById("tvuosi").value);
+  document.getElementById("tvuosi").addEventListener("change", piirra);
+  piirra();
+}
+
+function naytaTilastot(vuosi) {
+  const rivit = kysely(`
+    SELECT tu.id, tu.nimi, k.id AS kilpailu_id, k.nimi AS kilpailu,
+           COUNT(DISTINCT l.id) AS luokkia
+    FROM luokan_tuomari lt
+    JOIN tuomari tu ON tu.id = lt.tuomari_id
+    JOIN luokka l ON l.id = lt.luokka_id
+    JOIN kilpailu k ON k.id = l.kilpailu_id
+    ${vuosi ? "WHERE substr(l.pvm, 1, 4) = ?" : ""}
+    GROUP BY tu.id, k.id`, vuosi ? [vuosi] : []);
+
+  const tuomarit = {};
+  rivit.forEach(r => {
+    if (!tuomarit[r.id]) tuomarit[r.id] = { nimi: r.nimi, kilpailuja: 0, luokkia: 0, tasot: {} };
+    const t = tuomarit[r.id];
+    t.kilpailuja += 1;
+    t.luokkia += r.luokkia;
+    const taso_ = taso(r.kilpailu);
+    t.tasot[taso_] = (t.tasot[taso_] || 0) + r.luokkia;
+  });
+
+  const jarjestetty = Object.values(tuomarit)
+    .sort((a, b) => b.kilpailuja - a.kilpailuja || b.luokkia - a.luokkia
+                    || a.nimi.localeCompare(b.nimi, "fi"));
+
+  $sisalto.innerHTML =
+    `<h2>Tuomaroinnit ${vuosi || "kaikkina vuosina"} <span class="vaimea">· ${jarjestetty.length} tuomaria</span></h2>` +
+    taulukko(
+      ["#", "Tuomari", "Kilpailuja", "Luokkia", ...TASOT],
+      jarjestetty.map((t, i) => [
+        solu(i + 1, "luku vaimea"), solu(t.nimi),
+        solu(t.kilpailuja, "sija luku"), solu(t.luokkia, "luku"),
+        ...TASOT.map(x => solu(t.tasot[x] || "·", t.tasot[x] ? "luku" : "luku vaimea")),
+      ]),
+      { tyhja: "Ei tuomarointeja tältä vuodelta." });
+}
+
 // --- käynnistys -------------------------------------------------------------
 
-const nakymat = { pari: nakymaPari, tuomari: nakymaTuomari, kilpailu: nakymaKilpailu };
+const nakymat = {
+  pari: nakymaPari, tuomari: nakymaTuomari,
+  kilpailu: nakymaKilpailu, tilastot: nakymaTilastot,
+};
 
 document.querySelectorAll(".valikko button").forEach(btn => {
   btn.addEventListener("click", () => {
@@ -523,6 +636,16 @@ async function kaynnista() {
              (SELECT COUNT(*) FROM tuomari)  AS tuomareita`)[0];
     $tila.textContent =
       `${n.kilpailuja} kilpailua · ${n.luokkia} luokkaa · ${n.merkintoja} merkintää · ${n.tuomareita} tuomaria`;
+
+    const vali = kysely(`
+      SELECT MIN(pvm) AS alku, MAX(pvm) AS loppu FROM luokka WHERE pvm IS NOT NULL`)[0];
+    const tanssijoita = kysely(`SELECT COUNT(*) AS n FROM tanssija`)[0].n;
+    if (vali.alku) {
+      document.getElementById("kattavuus").textContent =
+        `Aineisto kattaa kilpailut ${pvmSuomeksi(vali.alku)}–${pvmSuomeksi(vali.loppu)}: ` +
+        `${n.kilpailuja} kilpailua, ${n.luokkia} luokkaa, ${tanssijoita} tanssijaa ` +
+        `ja ${n.merkintoja} tuomarimerkintää.`;
+    }
 
     nakymat[nakyma]();
   } catch (virhe) {
