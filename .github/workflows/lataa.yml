@@ -18,12 +18,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: python3 scrape.py ${{ inputs.alku }} ${{ inputs.loppu }}
-      - run: python3 scrape.py ${{ inputs.alku }} ${{ inputs.loppu }}
+      - run: python3 scrape.py ${{ inputs.alku || '1' }} ${{ inputs.loppu || '1100' }}
       - run: python3 parse.py
       - run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
           git add -A
-          git commit -m "Ladattu ${{ inputs.alku }}-${{ inputs.loppu }}" || echo "ei muutoksia"
+          git commit -m "Päivitys" || echo "ei muutoksia"
+          git pull --rebase
           git push
