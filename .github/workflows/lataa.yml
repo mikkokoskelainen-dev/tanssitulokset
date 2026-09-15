@@ -7,7 +7,7 @@ on:
     inputs:
       alku:
         description: "Ensimmäinen kilpailunumero"
-        default: "890"
+        default: "850"
       loppu:
         description: "Viimeinen kilpailunumero"
         default: "1000"
