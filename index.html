@@ -651,7 +651,8 @@ async function naytaKoot() {
   if (taysi) osat.push(`koko historia ${megatavuina(taysi)}`);
   if (osat.length) {
     document.getElementById("koot").textContent =
-      `Tietokannan koko: ${osat.join(", ")}. Sivu lataa oletuksena vain kuluvan vuoden.`;
+      `Ladattavan aineiston koko pakattuna: ${osat.join(", ")}. ` +
+      `Sivu lataa oletuksena vain kuluvan vuoden.`;
   }
 }
 
