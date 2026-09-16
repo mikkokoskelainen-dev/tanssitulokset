@@ -13,11 +13,16 @@ Kaytto:
 import html
 import pathlib
 import re
+import shutil
 import sqlite3
 from html.parser import HTMLParser
 
 RAW = pathlib.Path("data/raw")
 DB = pathlib.Path("data/tulokset.sqlite")
+DB_VUOSI = pathlib.Path("data/tulokset-vuosi.sqlite")
+
+# Kevyeen kantaan otetaan kuluva vuosi, eli aineiston uusimman kilpailun
+# kalenterivuosi tammikuun alusta alkaen.
 
 SCHEMA = """
 CREATE TABLE kilpailu (
@@ -80,6 +85,11 @@ CREATE TABLE tulos (
     sija          INTEGER,
     sija_raw      TEXT,
     PRIMARY KEY (luokka_id, pari_id)
+);
+
+CREATE TABLE meta (
+    avain         TEXT PRIMARY KEY,
+    arvo          TEXT
 );
 
 CREATE INDEX i_merkinta_pari    ON merkinta(pari_id);
@@ -328,6 +338,49 @@ def sija_numerona(teksti):
     return int(m.group(1)) if m else None
 
 
+def rakenna_vuosikanta():
+    """Tekee taydesta kannasta kevyen kopion, jossa on vain kuluvan vuoden
+    kilpailut. Sivu lataa taman oletuksena ja hakee koko historian vasta
+    pyydettaessa."""
+    if DB_VUOSI.exists():
+        DB_VUOSI.unlink()
+    shutil.copyfile(DB, DB_VUOSI)
+
+    con = sqlite3.connect(DB_VUOSI)
+    uusin = con.execute("SELECT MAX(pvm) FROM luokka WHERE pvm IS NOT NULL").fetchone()[0]
+    if not uusin:
+        con.close()
+        print("  vuosikantaa ei voitu rajata: paivamaaria ei loydy")
+        return None
+
+    vuosi = int(uusin[:4])
+    raja = f"{vuosi:04d}-01-01"
+
+    con.executescript(f"""
+        CREATE TEMP TABLE pidettavat AS
+          SELECT id FROM luokka WHERE pvm IS NOT NULL AND pvm >= '{raja}';
+
+        DELETE FROM merkinta       WHERE luokka_id NOT IN (SELECT id FROM pidettavat);
+        DELETE FROM tulos          WHERE luokka_id NOT IN (SELECT id FROM pidettavat);
+        DELETE FROM pari           WHERE luokka_id NOT IN (SELECT id FROM pidettavat);
+        DELETE FROM luokan_tuomari WHERE luokka_id NOT IN (SELECT id FROM pidettavat);
+        DELETE FROM luokka         WHERE id        NOT IN (SELECT id FROM pidettavat);
+        DELETE FROM kilpailu       WHERE id        NOT IN (SELECT kilpailu_id FROM luokka);
+        DELETE FROM tuomari        WHERE id        NOT IN (SELECT tuomari_id FROM luokan_tuomari);
+        DELETE FROM tanssija       WHERE id NOT IN (SELECT tanssija1_id FROM pari WHERE tanssija1_id IS NOT NULL)
+                                     AND id NOT IN (SELECT tanssija2_id FROM pari WHERE tanssija2_id IS NOT NULL);
+
+        INSERT OR REPLACE INTO meta (avain, arvo) VALUES ('vuosi', '{vuosi}');
+    """)
+    con.commit()
+    con.execute("VACUUM")
+    luvut = con.execute("""
+        SELECT (SELECT COUNT(*) FROM kilpailu), (SELECT COUNT(*) FROM luokka),
+               (SELECT COUNT(*) FROM merkinta)""").fetchone()
+    con.close()
+    return vuosi, raja, luvut
+
+
 def main():
     if not RAW.exists():
         print(f"Kansiota {RAW} ei loydy - aja scrape.py ensin.")
@@ -417,12 +470,18 @@ def main():
     )
     db.con.close()
 
-    print(f"\nValmis: {DB}")
+    print(f"\nValmis: {DB}  ({DB.stat().st_size / 1e6:.1f} MB)")
     print(f"  kilpailuja  {luvut['kilpailuja']}")
     print(f"  luokkia     {luokkia}")
     print(f"  merkintoja  {merkintoja}")
     print(f"  tuomareita  {luvut['tuomareita']}")
     print(f"  tanssijoita {luvut['tanssijoita']}")
+
+    tulos_vuosi = rakenna_vuosikanta()
+    if tulos_vuosi:
+        vuosi, raja, (k, l, m) = tulos_vuosi
+        print(f"\nVuosi {vuosi}: {DB_VUOSI}  ({DB_VUOSI.stat().st_size / 1e6:.1f} MB)")
+        print(f"  alkaen {raja}: {k} kilpailua, {l} luokkaa, {m} merkintaa")
 
 
 if __name__ == "__main__":

@@ -59,10 +59,10 @@
   .kaari { border: 1px solid var(--viiva); border-radius: 3px; overflow-x: auto;
            margin-bottom: 20px; -webkit-overflow-scrolling: touch; }
   th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--viiva);
-           vertical-align: top; overflow-wrap: anywhere; }
+           vertical-align: top; overflow-wrap: break-word; }
   th { font-weight: 600; font-size: 12px; color: var(--hailea); background: #fafaf8;
        position: sticky; top: 0; white-space: nowrap; }
-  .luku, .sija, .risti { white-space: nowrap; }
+  .luku, .sija, .risti, .pvm { white-space: nowrap; }
   /* Merkintäruudukko on leveä: siinä sarakkeet pysyvät yhdellä rivillä ja taulukko vierii */
   .ruudukko table { min-width: max-content; }
   .ruudukko td { white-space: nowrap; }
@@ -77,8 +77,30 @@
   h2 .vaimea { font-weight: 400; }
   .tyhja { padding: 28px 20px; color: var(--hailea); background: var(--paperi);
            border: 1px dashed var(--viiva); border-radius: 3px; }
+  #laajenna { font: inherit; font-size: 13px; padding: 5px 11px; cursor: pointer;
+              border: 1px solid var(--korostus); background: var(--paperi);
+              color: var(--korostus); border-radius: 3px; margin-top: 8px; }
+  #laajenna[disabled] { opacity: .55; cursor: default; }
   .takaisin { font: inherit; background: none; border: 0; color: var(--korostus);
               cursor: pointer; padding: 0; margin-bottom: 8px; }
+
+  /* Kapea ruutu: taulukot vierivät sivusuunnassa sen sijaan että puristuisivat */
+  @media (max-width: 760px) {
+    body { -webkit-text-size-adjust: 100%; }
+    header { padding: 14px 14px 12px; }
+    main { padding: 14px; }
+    footer { padding: 8px 14px 32px; }
+    h1 { font-size: 17px; }
+    .johdanto { font-size: 13px; }
+    .johdanto p + p { display: none; }   /* kapealla ruudulla vain ensimmäinen kappale */
+    #tila { font-size: 12px; }
+    .valikko button { padding: 8px 12px; font-size: 14px; }
+    input[type="search"], select { width: 100%; min-width: 0; }
+    .rivi { gap: 6px; }
+    .kaari table { min-width: max-content; }
+    .kaari td, .kaari th { white-space: nowrap; padding: 6px 8px; }
+    table { font-size: 13px; }
+  }
 </style>
 </head>
 <body>
@@ -86,6 +108,7 @@
 <header>
   <h1>Tanssikilpailutulokset</h1>
   <div id="tila">Ladataan tietokantaa…</div>
+  <button id="laajenna" hidden></button>
   <div class="johdanto">
     <p>Suomalaisten vakio- ja latinalaistanssikilpailujen tulokset yhdessä
        haettavassa muodossa. Mukana ovat myös tuomarien yksittäiset merkinnät,
@@ -109,6 +132,7 @@
 
 <footer>
   <p id="kattavuus"></p>
+  <p id="koot"></p>
   <p>Aineisto on koottu automaattisesti Suomen Tanssiurheiluliiton julkaisemista
      kilpailutuloksista ja päivittyy viikoittain. Sivusto ei ole virallinen
      tulospalvelu: viralliset tulokset löytyvät osoitteesta
@@ -117,9 +141,12 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
 <script>
-const KANTA = "data/tulokset.sqlite";
+const KANTA_VUOSI = "data/tulokset-vuosi.sqlite";
+const KANTA_TAYSI = "data/tulokset.sqlite";
 let db = null;
+let SQL = null;
 let nakyma = "pari";
+let taysiLadattu = false;
 
 const $ohjaimet = document.getElementById("ohjaimet");
 const $sisalto = document.getElementById("sisalto");
@@ -213,7 +240,7 @@ function hae(hakusana) {
   $sisalto.innerHTML = taulukko(
     ["Päivä", "Kilpailu", "Luokka", "Pari", "Seura", "Sija"],
     osumat.map(r => [
-      solu(pvmSuomeksi(r.pvm)), solu(r.kilpailu), solu(r.luokka),
+      solu(pvmSuomeksi(r.pvm), "pvm"), solu(r.kilpailu), solu(r.luokka),
       solu(r.pari), solu(r.seura), solu(r.sija_raw || "–", "sija"),
     ]),
     { klikki: true, tyhja: "Ei osumia tällä nimellä." });
@@ -394,7 +421,7 @@ function naytaTuomari(id, vuosi, kilpailuId) {
     taulukko(
       ["Päivä", "Kilpailu", "Luokka", "Pari", "Kierros", "Tanssi", "Merkintä", "Parin sija"],
       rivit.map(r => [
-        solu(pvmSuomeksi(r.pvm)), solu(r.kilpailu), solu(r.luokka), solu(r.pari),
+        solu(pvmSuomeksi(r.pvm), "pvm"), solu(r.kilpailu), solu(r.luokka), solu(r.pari),
         solu(r.kierros), solu(r.tanssi), merkintaSolu(r.arvo),
         solu(r.sija_raw || "–", "sija"),
       ]),
@@ -457,7 +484,7 @@ function naytaKilpailu(id) {
   $sisalto.innerHTML = taulukko(
     ["Nro", "Luokka", "Päivä", "Pareja"],
     luokat.map(l => [
-      solu(l.nro, "luku"), solu(l.nimi), solu(pvmSuomeksi(l.pvm)), solu(l.pareja, "luku"),
+      solu(l.nro, "luku"), solu(l.nimi), solu(pvmSuomeksi(l.pvm), "pvm"), solu(l.pareja, "luku"),
     ]),
     { klikki: true, tyhja: "Tässä kilpailussa ei ole luettuja luokkia." });
 
@@ -591,39 +618,116 @@ document.querySelectorAll(".valikko button").forEach(btn => {
   });
 });
 
+async function avaaKanta(url) {
+  const vastaus = await fetch(url);
+  if (!vastaus.ok) throw new Error(`tietokantaa ei löytynyt (${vastaus.status})`);
+  db = new SQL.Database(new Uint8Array(await vastaus.arrayBuffer()));
+}
+
+/** Tiedoston koko tavuina ilman että sitä ladataan. */
+async function tiedostonKoko(url) {
+  try {
+    const v = await fetch(url, { method: "HEAD" });
+    return Number(v.headers.get("content-length")) || 0;
+  } catch { return 0; }
+}
+
+function megatavuina(n) {
+  if (!n) return "";
+  return n < 1e6 ? "alle 1 MB" : `${Math.round(n / 1e6)} MB`;
+}
+
+async function taydenKoko() {
+  const koko = megatavuina(await tiedostonKoko(KANTA_TAYSI));
+  return koko ? ` (${koko})` : "";
+}
+
+/** Näyttää molempien tietokantojen koot alatunnisteessa. */
+async function naytaKoot() {
+  const [vuosi, taysi] = await Promise.all(
+    [tiedostonKoko(KANTA_VUOSI), tiedostonKoko(KANTA_TAYSI)]);
+  const osat = [];
+  if (vuosi) osat.push(`kuluva vuosi ${megatavuina(vuosi)}`);
+  if (taysi) osat.push(`koko historia ${megatavuina(taysi)}`);
+  if (osat.length) {
+    document.getElementById("koot").textContent =
+      `Tietokannan koko: ${osat.join(", ")}. Sivu lataa oletuksena vain kuluvan vuoden.`;
+  }
+}
+
+async function lataaTaysi(nappi) {
+  nappi.disabled = true;
+  nappi.textContent = "Ladataan koko historiaa…";
+  try {
+    await avaaKanta(KANTA_TAYSI);
+    taysiLadattu = true;
+    nappi.hidden = true;
+    paivitaLuvut();
+    aja(nakymat[nakyma]);
+    naytaKoot();
+  } catch (virhe) {
+    nappi.disabled = false;
+    nappi.textContent = "Lataus epäonnistui — yritä uudelleen";
+  }
+}
+
+/** Vuosiluku luetaan kevyen kannan meta-taulusta, jos se on siellä. */
+function vuosiNimi() {
+  try {
+    const r = kysely(`SELECT arvo FROM meta WHERE avain = 'vuosi'`);
+    return r.length ? r[0].arvo : "";
+  } catch { return ""; }
+}
+
+function paivitaLuvut() {
+  const n = kysely(`
+    SELECT (SELECT COUNT(*) FROM kilpailu) AS kilpailuja,
+           (SELECT COUNT(*) FROM luokka)   AS luokkia,
+           (SELECT COUNT(*) FROM merkinta) AS merkintoja,
+           (SELECT COUNT(*) FROM tuomari)  AS tuomareita`)[0];
+  const vali = kysely(`
+    SELECT MIN(pvm) AS alku, MAX(pvm) AS loppu FROM luokka WHERE pvm IS NOT NULL`)[0];
+  const tanssijoita = kysely(`SELECT COUNT(*) AS n FROM tanssija`)[0].n;
+
+  $tila.textContent =
+    `${taysiLadattu ? "Koko historia" : "Vuosi " + (vuosiNimi() || "")}`.trim() + ": " +
+    `${n.kilpailuja} kilpailua · ${n.luokkia} luokkaa · ${n.merkintoja} merkintää · ${n.tuomareita} tuomaria`;
+
+  if (vali.alku) {
+    document.getElementById("kattavuus").textContent =
+      `Näkyvissä olevat tiedot kattavat kilpailut ${pvmSuomeksi(vali.alku)}–${pvmSuomeksi(vali.loppu)}: ` +
+      `${n.kilpailuja} kilpailua, ${n.luokkia} luokkaa, ${tanssijoita} tanssijaa ` +
+      `ja ${n.merkintoja} tuomarimerkintää.`;
+  }
+}
+
 async function kaynnista() {
   try {
-    const SQL = await initSqlJs({
+    SQL = await initSqlJs({
       locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${f}`
     });
-    const vastaus = await fetch(KANTA);
-    if (!vastaus.ok) throw new Error(`tietokantaa ei löytynyt (${vastaus.status})`);
-    db = new SQL.Database(new Uint8Array(await vastaus.arrayBuffer()));
 
-    const n = kysely(`
-      SELECT (SELECT COUNT(*) FROM kilpailu) AS kilpailuja,
-             (SELECT COUNT(*) FROM luokka)   AS luokkia,
-             (SELECT COUNT(*) FROM merkinta) AS merkintoja,
-             (SELECT COUNT(*) FROM tuomari)  AS tuomareita`)[0];
-    $tila.textContent =
-      `${n.kilpailuja} kilpailua · ${n.luokkia} luokkaa · ${n.merkintoja} merkintää · ${n.tuomareita} tuomaria`;
-
-    const vali = kysely(`
-      SELECT MIN(pvm) AS alku, MAX(pvm) AS loppu FROM luokka WHERE pvm IS NOT NULL`)[0];
-    const tanssijoita = kysely(`SELECT COUNT(*) AS n FROM tanssija`)[0].n;
-    if (vali.alku) {
-      document.getElementById("kattavuus").textContent =
-        `Aineisto kattaa kilpailut ${pvmSuomeksi(vali.alku)}–${pvmSuomeksi(vali.loppu)}: ` +
-        `${n.kilpailuja} kilpailua, ${n.luokkia} luokkaa, ${tanssijoita} tanssijaa ` +
-        `ja ${n.merkintoja} tuomarimerkintää.`;
+    // Kuluvan vuoden kevyt kanta oletuksena; jos sitä ei ole, avataan täysi
+    const nappi = document.getElementById("laajenna");
+    try {
+      await avaaKanta(KANTA_VUOSI);
+      nappi.textContent = "Lataa koko historia" + (await taydenKoko());
+      // painikkeen teksti kertoo mitä nyt puuttuu
+      nappi.hidden = false;
+      nappi.addEventListener("click", () => lataaTaysi(nappi));
+    } catch {
+      await avaaKanta(KANTA_TAYSI);
+      taysiLadattu = true;
     }
 
+    paivitaLuvut();
     aja(nakymat[nakyma]);
+    naytaKoot();
   } catch (virhe) {
     $tila.textContent = "Tietokantaa ei voitu avata.";
     $sisalto.innerHTML =
       `<div class="tyhja">Tietokannan lataus epäonnistui: ${teksti(virhe.message)}.<br>
-       Tarkista että tiedosto <code>${KANTA}</code> on julkaistu sivuston mukana.</div>`;
+       Tarkista että tiedosto <code>${KANTA_TAYSI}</code> on julkaistu sivuston mukana.</div>`;
   }
 }
 
