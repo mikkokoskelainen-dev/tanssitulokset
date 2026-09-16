@@ -507,7 +507,7 @@ function nakymaTilastot() {
     </select>
     <span class="vaimea">Eniten tuominneet ensin</span>`;
 
-  const piirra = () => naytaTilastot(document.getElementById("tvuosi").value);
+  const piirra = () => aja(naytaTilastot, document.getElementById("tvuosi").value);
   document.getElementById("tvuosi").addEventListener("change", piirra);
   piirra();
 }
@@ -556,12 +556,25 @@ const nakymat = {
   kilpailu: nakymaKilpailu, tilastot: nakymaTilastot,
 };
 
+/** Ajaa näkymän ja näyttää mahdollisen virheen ruudulla sen sijaan,
+    että se jäisi vain selaimen konsoliin. */
+function aja(fn, ...args) {
+  try {
+    fn(...args);
+  } catch (virhe) {
+    console.error(virhe);
+    $sisalto.innerHTML =
+      `<div class="tyhja">Näkymän piirtäminen epäonnistui.<br>
+       <code>${teksti(virhe && virhe.message || virhe)}</code></div>`;
+  }
+}
+
 document.querySelectorAll(".valikko button").forEach(btn => {
   btn.addEventListener("click", () => {
     document.querySelectorAll(".valikko button")
       .forEach(b => b.setAttribute("aria-selected", String(b === btn)));
     nakyma = btn.dataset.nakyma;
-    nakymat[nakyma]();
+    aja(nakymat[nakyma]);
   });
 });
 
@@ -592,7 +605,7 @@ async function kaynnista() {
         `ja ${n.merkintoja} tuomarimerkintää.`;
     }
 
-    nakymat[nakyma]();
+    aja(nakymat[nakyma]);
   } catch (virhe) {
     $tila.textContent = "Tietokantaa ei voitu avata.";
     $sisalto.innerHTML =
