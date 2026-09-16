@@ -113,9 +113,6 @@
      kilpailutuloksista ja päivittyy viikoittain. Sivusto ei ole virallinen
      tulospalvelu: viralliset tulokset löytyvät osoitteesta
      <a href="https://www.dancesport.fi/lajit/vakio-ja-latinalaistanssit/tulokset/kilpailutulokset/">dancesport.fi</a>.</p>
-  <p>Pisteet-sarake on tuomarien antamien sijoitusten summa. Lopullinen sijoitus
-     ratkaistaan skating-säännöillä tanssi kerrallaan, joten pienin pistesumma ei
-     aina tarkoita parasta sijaa.</p>
 </footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
@@ -239,8 +236,7 @@ function naytaPari(rivi) {
     .addEventListener("click", () => hae(document.getElementById("haku").value.trim()));
 }
 
-/** Rakentaa taulukon: rivit = kierros × tanssi, sarakkeet = tuomarit.
-    Viimeisenä sarakkeena sijalukupisteet eli tuomarien sijoitusten summa. */
+/** Rakentaa taulukon: rivit = kierros × tanssi, sarakkeet = tuomarit. */
 function merkintaRuudukko(merkinnat) {
   if (!merkinnat.length) return `<div class="tyhja">Merkintöjä ei löytynyt.</div>`;
 
@@ -252,62 +248,16 @@ function merkintaRuudukko(merkinnat) {
   const kartta = {};
   merkinnat.forEach(m => { kartta[`${m.kierros}\u0000${m.tanssi}\u0000${m.kirjain}`] = m.arvo; });
 
-  const rivit = [];
-  const summat = {};          // kierros -> koko kierroksen pistesumma
-  const ristit = {};          // kierros -> ristien määrä, jos kyse karsinnasta
-
-  parit.forEach((avain, i) => {
+  const rivit = parit.map(avain => {
     const [kierros, tanssi] = avain.split("\u0000");
-    let summa = 0, numeroita = 0, risteja = 0;
-
-    const solut = kirjaimet.map(kirj => {
-      const arvo = kartta[`${avain}\u0000${kirj}`];
-      if (arvo) {
-        if (/^\d/.test(arvo)) { summa += parseInt(arvo, 10); numeroita++; }
-        else risteja++;
-      }
-      return merkintaSolu(arvo);
-    });
-
-    const piste = numeroita ? String(summa) : (risteja ? `${risteja} ✕` : "");
-    if (numeroita) summat[kierros] = (summat[kierros] || 0) + summa;
-    if (risteja) ristit[kierros] = (ristit[kierros] || 0) + risteja;
-
-    rivit.push([solu(kierros), solu(tanssi), ...solut, solu(piste, "sija luku")]);
-
-    // Kierroksen vaihtuessa (tai lopussa) yhteissumma omalle rivilleen
-    const seuraava = parit[i + 1];
-    const viimeinen = !seuraava || seuraava.split("\u0000")[0] !== kierros;
-    if (viimeinen) {
-      const yht = summat[kierros] !== undefined
-        ? String(summat[kierros])
-        : (ristit[kierros] ? `${ristit[kierros]} ✕` : "");
-      rivit.push([
-        solu(""), solu("Yhteensä", "vaimea"),
-        ...kirjaimet.map(() => solu("")),
-        solu(yht, "sija luku"),
-      ]);
-    }
+    return [solu(kierros), solu(tanssi),
+      ...kirjaimet.map(kirj => merkintaSolu(kartta[`${avain}\u0000${kirj}`]))];
   });
 
   const otsikot = ["Kierros", "Tanssi",
-    ...kirjaimet.map(k => nimet[k] ? `${k} · ${nimet[k]}` : k),
-    "Pisteet"];
+    ...kirjaimet.map(k => nimet[k] ? `${k} · ${nimet[k]}` : k)];
   return taulukko(otsikot, rivit, { ruudukko: true });
 }
-
-/** Päättelee kilpailun tason sen nimestä. TPS ei tallenna tasoa erikseen,
-    mutta se on käytännössä aina luettavissa kilpailun nimestä. */
-function taso(nimi) {
-  const n = (nimi || "").toLowerCase();
-  if (/\bsm\b|suomen mestaruus|suomenmestaruus/.test(n)) return "SM";
-  if (/\bgp\b|grand prix/.test(n)) return "GP";
-  if (/ikm|ikäkausi|ikakausi/.test(n)) return "IKM";
-  if (/seurakilpailu|seuraottelu/.test(n)) return "Seura";
-  return "Muu";
-}
-
-const TASOT = ["SM", "GP", "IKM", "Muu", "Seura"];
 
 // --- näkymä: tuomari --------------------------------------------------------
 
@@ -503,10 +453,7 @@ function naytaKilpailu(id) {
 
 function naytaLuokka(luokka, kilpailuId) {
   const tulokset = kysely(`
-    SELECT p.id, p.numero, p.nimi, p.seura, t.sija, t.sija_raw,
-           (SELECT SUM(m.sijoitus) FROM merkinta m WHERE m.pari_id = p.id) AS pisteet,
-           (SELECT COUNT(*) FROM merkinta m WHERE m.pari_id = p.id
-             AND m.sijoitus IS NULL) AS risteja
+    SELECT p.id, p.numero, p.nimi, p.seura, t.sija, t.sija_raw
     FROM pari p LEFT JOIN tulos t ON t.pari_id = p.id
     WHERE p.luokka_id = ?
     ORDER BY CASE WHEN t.sija IS NULL THEN 1 ELSE 0 END, t.sija, p.numero`, [luokka.id]);
@@ -520,12 +467,10 @@ function naytaLuokka(luokka, kilpailuId) {
     `<button class="takaisin" id="takaisin">← Takaisin luokkalistaan</button>` +
     `<h2>${teksti(luokka.nimi)} <span class="vaimea">· tuomarit ${tuomarit.map(t => `${t.kirjain} ${t.nimi}`).join(", ") || "ei tiedossa"}</span></h2>` +
     taulukko(
-      ["Sija", "Nro", "Pari", "Seura", "Pisteet", "Ristejä"],
+      ["Sija", "Nro", "Pari", "Seura"],
       tulokset.map(r => [
         solu(r.sija_raw || "–", "sija"), solu(r.numero, "luku"),
         solu(r.nimi), solu(r.seura),
-        solu(r.pisteet ?? "·", r.pisteet ? "sija luku" : "luku vaimea"),
-        solu(r.risteja || "·", r.risteja ? "luku" : "luku vaimea"),
       ]),
       { klikki: true, tyhja: "Luokassa ei ole pareja." });
 
