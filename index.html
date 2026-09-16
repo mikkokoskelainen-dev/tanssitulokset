@@ -259,6 +259,19 @@ function merkintaRuudukko(merkinnat) {
   return taulukko(otsikot, rivit, { ruudukko: true });
 }
 
+/** Päättelee kilpailun tason sen nimestä. TPS ei tallenna tasoa erikseen,
+    mutta se on käytännössä aina luettavissa kilpailun nimestä. */
+function taso(nimi) {
+  const n = (nimi || "").toLowerCase();
+  if (/\bsm\b|suomen mestaruus|suomenmestaruus/.test(n)) return "SM";
+  if (/\bgp\b|grand prix/.test(n)) return "GP";
+  if (/ikm|ikäkausi|ikakausi/.test(n)) return "IKM";
+  if (/seurakilpailu|seuraottelu/.test(n)) return "Seura";
+  return "Muu";
+}
+
+const TASOT = ["SM", "GP", "IKM", "Muu", "Seura"];
+
 // --- näkymä: tuomari --------------------------------------------------------
 
 function nakymaTuomari() {
