@@ -1,8 +1,7 @@
 name: Lataa tulokset
 on:
   schedule:
-    - cron: "0 1 * * 0"    # sunnuntaiyö klo 1 UTC = la–su yö
-    - cron: "0 1 * * 1"    # maanantaiyö klo 1 UTC = su–ma yö
+    - cron: "0 1 * * *"    # joka yö klo 1 UTC
   workflow_dispatch:
     inputs:
       alku:
