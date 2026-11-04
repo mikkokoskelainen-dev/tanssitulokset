@@ -2,6 +2,15 @@
 <html lang="fi">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'none';
+  script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval';
+  style-src 'self' 'unsafe-inline';
+  connect-src 'self';
+  img-src 'self' data:;
+  base-uri 'none';
+  form-action 'none'">
+<meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Suomalaiset ulkomaisissa kilpailuissa</title>
 <style>
@@ -141,7 +150,7 @@
      Sivusto ei ole virallinen tulospalvelu.</p>
 </footer>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+<script src="vendor/sql-wasm.js"></script>
 <script>
 const KANTA = "data/ulkomaat.sqlite";
 let db = null;
@@ -178,9 +187,13 @@ function solu(arvo, luokka = "") {
 
 /** Solu, jonka sisältö on linkki ulos. Ilman osoitetta tavallinen solu. */
 function linkkiSolu(nimi, url, luokka = "") {
-  if (!url) return solu(nimi, luokka);
+  // Vain https-osoite kelpaa linkiksi: aineistosta tuleva osoite ei saa
+  // päätyä esimerkiksi javascript:-muotoiseksi linkiksi.
+  const turvallinen = typeof url === "string" && /^https:\/\//.test(url) ? url : "";
+  if (!turvallinen) return solu(nimi, luokka);
   return `<td${luokka ? ` class="${luokka}"` : ""}>` +
-         `<a href="${teksti(url)}" target="_blank" rel="noopener">${teksti(nimi)}</a></td>`;
+         `<a href="${teksti(turvallinen)}" target="_blank" rel="noopener noreferrer">` +
+         `${teksti(nimi)}</a></td>`;
 }
 
 function taulukko(otsikot, rivit, asetukset = {}) {
@@ -370,7 +383,7 @@ document.querySelectorAll(".valikko button").forEach(btn => {
 async function kaynnista() {
   try {
     const SQL = await initSqlJs({
-      locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${f}`
+      locateFile: f => `vendor/${f}`
     });
     const vastaus = await fetch(KANTA);
     if (!vastaus.ok) throw new Error(`tietokantaa ei löytynyt (${vastaus.status})`);
