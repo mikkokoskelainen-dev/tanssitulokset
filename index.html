@@ -2,6 +2,15 @@
 <html lang="fi">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'none';
+  script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval';
+  style-src 'self' 'unsafe-inline';
+  connect-src 'self';
+  img-src 'self' data:;
+  base-uri 'none';
+  form-action 'none'">
+<meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tanssiurheilukilpailutulokset Suomessa</title>
 <style>
@@ -148,7 +157,7 @@
      <a href="https://www.dancesport.fi/lajit/vakio-ja-latinalaistanssit/tulokset/kilpailutulokset/">dancesport.fi</a>.</p>
 </footer>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+<script src="vendor/sql-wasm.js"></script>
 <script>
 const KANTA_VUOSI = "data/tulokset-vuosi.sqlite";
 const KANTA_TAYSI = "data/tulokset.sqlite";
@@ -911,7 +920,7 @@ function paivitaLuvut() {
 async function kaynnista() {
   try {
     SQL = await initSqlJs({
-      locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${f}`
+      locateFile: f => `vendor/${f}`
     });
 
     // Kuluvan vuoden kevyt kanta oletuksena; jos sitä ei ole, avataan täysi
