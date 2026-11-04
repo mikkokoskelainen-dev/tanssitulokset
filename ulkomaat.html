@@ -64,6 +64,7 @@
        position: sticky; top: 0; white-space: nowrap; }
   .luku, .sija, .risti, .pvm { white-space: nowrap; }
   .mestaruus { white-space: nowrap; font-weight: 600; color: var(--korostus); }
+  td a { color: var(--korostus); }
   /* Merkintäruudukko on leveä: siinä sarakkeet pysyvät yhdellä rivillä ja taulukko vierii */
   .ruudukko table { min-width: max-content; }
   .ruudukko td { white-space: nowrap; }
@@ -167,6 +168,13 @@ function solu(arvo, luokka = "") {
   return `<td${luokka ? ` class="${luokka}"` : ""}>${teksti(arvo)}</td>`;
 }
 
+/** Solu, jonka sisältö on linkki ulos. Ilman osoitetta tavallinen solu. */
+function linkkiSolu(nimi, url, luokka = "") {
+  if (!url) return solu(nimi, luokka);
+  return `<td${luokka ? ` class="${luokka}"` : ""}>` +
+         `<a href="${teksti(url)}" target="_blank" rel="noopener">${teksti(nimi)}</a></td>`;
+}
+
 function taulukko(otsikot, rivit, asetukset = {}) {
   if (!rivit.length) return `<div class="tyhja">${teksti(asetukset.tyhja || "Ei osumia.")}</div>`;
   const thead = otsikot.map(o => `<th>${teksti(o)}</th>`).join("");
@@ -243,7 +251,7 @@ function naytaTanssijat(valittuPari, hakusana, vuosi) {
   const missa = ehdot.length ? "WHERE " + ehdot.join(" AND ") : "";
 
   const rivit = kysely(`
-    SELECT k.pvm, k.nimi AS kilpailu, k.kaupunki, k.maa, k.tapahtuma,
+    SELECT k.pvm, k.nimi AS kilpailu, k.kaupunki, k.maa, k.tapahtuma, k.url,
            s.pari, s.sija_raw
     FROM sijoitus s JOIN kilpailu k ON k.id = s.kilpailu_id
     ${missa}
@@ -255,7 +263,7 @@ function naytaTanssijat(valittuPari, hakusana, vuosi) {
     `<h2>Sijoitukset <span class="vaimea">· ${rivit.length} tulosta, ${parit} paria</span></h2>` +
     taulukko(["Päivä", "Kilpailu", "Paikka", "Pari", "Sija"],
       rivit.map(r => [
-        solu(pvmSuomeksi(r.pvm), "pvm"), solu(r.kilpailu),
+        solu(pvmSuomeksi(r.pvm), "pvm"), linkkiSolu(r.kilpailu, r.url),
         solu([r.kaupunki, r.maa].filter(Boolean).join(", ")),
         solu(r.pari), solu(r.sija_raw || "–", "sija"),
       ]),
@@ -298,7 +306,8 @@ function naytaTuomari(nimi) {
     SELECT COALESCE(k.tapahtuma, k.kaupunki || ', ' || k.maa) AS tapahtuma,
            MIN(k.pvm) AS alku, k.maa,
            COUNT(DISTINCT k.id) AS luokkia,
-           GROUP_CONCAT(DISTINCT t.rooli) AS roolit
+           GROUP_CONCAT(DISTINCT t.rooli) AS roolit,
+           COALESCE(MIN(k.tapahtuma_url), MIN(k.url)) AS url
     FROM tuomarointi t JOIN kilpailu k ON k.id = t.kilpailu_id
     WHERE t.nimi = ?
     GROUP BY COALESCE(CAST(k.tapahtuma_id AS TEXT), k.kaupunki || '|' || k.maa || '|' || k.pvm)
@@ -309,10 +318,10 @@ function naytaTuomari(nimi) {
   $sisalto.innerHTML =
     `<button class="takaisin" id="takaisin">← Takaisin tuomarilistaan</button>` +
     `<h2>${teksti(nimi)} <span class="vaimea">· ${rivit.length} kilpailua, ` +
-    `${luokkia} luokkaa</span></h2>` +
+    `${luokkia} luokkaa · kilpailun nimi avaa WDSF:n sivun</span></h2>` +
     taulukko(["Päivä", "Kilpailu", "Luokkia", "Rooli"],
       rivit.map(r => [
-        solu(pvmSuomeksi(r.alku), "pvm"), solu(r.tapahtuma),
+        solu(pvmSuomeksi(r.alku), "pvm"), linkkiSolu(r.tapahtuma, r.url),
         solu(r.luokkia, "luku"),
         solu((r.roolit || "").split(",").join(", ")),
       ]));

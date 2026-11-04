@@ -40,7 +40,8 @@ CREATE TABLE kilpailu (
     pvm          TEXT,                  -- ISO
     url          TEXT,
     tapahtuma_id INTEGER,               -- WDSF:n tapahtumanumero
-    tapahtuma    TEXT                   -- "Platja d'Aro, Spain 30.10.-1.11.2026"
+    tapahtuma    TEXT,                  -- "Platja d'Aro, Spain 30.10.-1.11.2026"
+    tapahtuma_url TEXT
 );
 
 CREATE TABLE sijoitus (
@@ -180,17 +181,24 @@ def lue_otsikko(sivu):
     return {"nimi": nimi, "kaupunki": kaupunki, "maa": maa, "pvm": pvm}
 
 
+def lue_url(sivu):
+    """Sivun <base href> kertoo kilpailun oikean osoitteen."""
+    m = re.search(r'<base href="([^"]+)"', sivu)
+    return m.group(1).rstrip("/") if m else None
+
+
 def lue_tapahtuma(sivu):
     """Sivulla on linkki tapahtumaan, esim.
     /Events/Platja-dAro-Spain-30102026-01112026-8626 -> numero ja nimi."""
-    m = re.search(r'href="/Events/([A-Za-z0-9\-]*?)-(\d{8})(?:-(\d{8}))?-(\d+)"', sivu)
+    m = re.search(r'href="(/Events/([A-Za-z0-9\-]*?)-(\d{8})(?:-(\d{8}))?-(\d+))"', sivu)
     if not m:
-        return None, None
-    paikka, alku, loppu, tid = m.groups()
+        return None, None, None
+    polku, paikka, alku, loppu, tid = m.groups()
     paikka = paikka.replace("-", " ").strip()
 
     def pv(p):
         return f"{int(p[0:2])}.{int(p[2:4])}." if p else ""
+
 
     if loppu and loppu != alku:
         # Sama vuosi: "30.10.–1.11.2026", eri vuosi: molemmat vuodet nakyviin
@@ -200,7 +208,7 @@ def lue_tapahtuma(sivu):
             aika = f"{pv(alku)}{alku[4:8]}–{pv(loppu)}{loppu[4:8]}"
     else:
         aika = f"{pv(alku)}{alku[4:8]}"
-    return int(tid), f"{paikka}, {aika}".strip()
+    return int(tid), f"{paikka}, {aika}".strip(), BASE + polku
 
 
 def lue_sijoitukset(sivu):
@@ -262,7 +270,8 @@ def jasenna():
         sivu = tiedosto.read_bytes().decode("utf-8", errors="replace")
         tiedot = lue_otsikko(sivu)
         sijat = lue_sijoitukset(sivu)
-        tap_id, tap_nimi = lue_tapahtuma(sivu)
+        tap_id, tap_nimi, tap_url = lue_tapahtuma(sivu)
+        url = lue_url(sivu)
 
         tuomarit = []
         off = RAW / "officials" / f"{cid}.html"
@@ -272,18 +281,20 @@ def jasenna():
             if tiedot is None:
                 tiedot = lue_otsikko(off_sivu)
             if tap_id is None:
-                tap_id, tap_nimi = lue_tapahtuma(off_sivu)
+                tap_id, tap_nimi, tap_url = lue_tapahtuma(off_sivu)
+            if url is None:
+                url = (lue_url(off_sivu) or "").replace(
+                    "/Competitions/Officials/", "/Competitions/Ranking/") or None
 
         if not sijat and not tuomarit:
             continue                      # ei suomalaisia -> ei tallenneta
 
         tiedot = tiedot or {"nimi": None, "kaupunki": None, "maa": None, "pvm": None}
         con.execute("INSERT OR REPLACE INTO kilpailu "
-                    "(id,nimi,kaupunki,maa,pvm,url,tapahtuma_id,tapahtuma) "
-                    "VALUES (?,?,?,?,?,?,?,?)",
+                    "(id,nimi,kaupunki,maa,pvm,url,tapahtuma_id,tapahtuma,tapahtuma_url) "
+                    "VALUES (?,?,?,?,?,?,?,?,?)",
                     (cid, tiedot["nimi"], tiedot["kaupunki"], tiedot["maa"],
-                     tiedot["pvm"], f"{BASE}/Competitions/Ranking/{cid}",
-                     tap_id, tap_nimi))
+                     tiedot["pvm"], url, tap_id, tap_nimi, tap_url))
         kilpailuja += 1
 
         for s in sijat:
