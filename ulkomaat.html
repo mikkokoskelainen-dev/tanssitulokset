@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Suomalaiset ulkomaisissa kilpailuissa</title>
+<style>
+  :root {
+    --muste: #17181c;
+    --hailea: #6b6f7a;
+    --tausta: #f2f2ef;
+    --paperi: #ffffff;
+    --viiva: #d9d9d4;
+    --vakio: #2f4b7c;   /* vakiotanssit */
+    --latin: #a8442a;   /* latinalaiset */
+    --korostus: #2f4b7c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--tausta);
+    color: var(--muste);
+    font: 15px/1.5 "Helvetica Neue", Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    border-bottom: 1px solid var(--viiva);
+    background: var(--paperi);
+    padding: 18px 20px 14px;
+  }
+  h1 { font-size: 19px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+  #tila { color: var(--hailea); font-size: 13px; margin-top: 3px; }
+  .johdanto { max-width: 62ch; margin: 12px 0 0; color: #3d4049; font-size: 14px; }
+  .johdanto p { margin: 0 0 6px; }
+  footer { max-width: 1080px; margin: 0 auto; padding: 8px 20px 40px;
+           color: var(--hailea); font-size: 13px; border-top: 1px solid var(--viiva); }
+  footer p { margin: 8px 0; max-width: 70ch; }
+  footer a { color: var(--korostus); }
+  main { max-width: 1080px; margin: 0 auto; padding: 20px; }
+
+  .valikko { display: flex; gap: 2px; margin-bottom: 18px; flex-wrap: wrap; }
+  .valikko button {
+    font: inherit; padding: 7px 14px; border: 1px solid var(--viiva);
+    background: var(--paperi); color: var(--hailea); cursor: pointer; border-radius: 3px;
+  }
+  .valikko button[aria-selected="true"] {
+    background: var(--korostus); border-color: var(--korostus); color: #fff;
+  }
+  .rivi { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+  input[type="search"], select {
+    font: inherit; padding: 7px 10px; border: 1px solid var(--viiva);
+    border-radius: 3px; background: var(--paperi); color: var(--muste); min-width: 220px;
+  }
+  input:focus-visible, select:focus-visible, button:focus-visible, tr:focus-visible {
+    outline: 2px solid var(--korostus); outline-offset: 1px;
+  }
+
+  table { border-collapse: collapse; width: 100%; background: var(--paperi); font-size: 14px; }
+  .kaari { border: 1px solid var(--viiva); border-radius: 3px; overflow-x: auto;
+           margin-bottom: 20px; -webkit-overflow-scrolling: touch; }
+  th, td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--viiva);
+           vertical-align: top; overflow-wrap: break-word; }
+  th { font-weight: 600; font-size: 12px; color: var(--hailea); background: #fafaf8;
+       position: sticky; top: 0; white-space: nowrap; }
+  .luku, .sija, .risti, .pvm { white-space: nowrap; }
+  .mestaruus { white-space: nowrap; font-weight: 600; color: var(--korostus); }
+  /* Merkintäruudukko on leveä: siinä sarakkeet pysyvät yhdellä rivillä ja taulukko vierii */
+  .ruudukko table { min-width: max-content; }
+  .ruudukko td { white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr.klikattava { cursor: pointer; }
+  tbody tr.klikattava:hover { background: #f6f6f3; }
+  .luku { text-align: center; font-variant-numeric: tabular-nums; }
+  .risti { color: var(--hailea); }
+  .sija { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .vaimea { color: var(--hailea); }
+  h2 { font-size: 15px; font-weight: 600; margin: 22px 0 8px; }
+  h2 .vaimea { font-weight: 400; }
+  .tyhja { padding: 28px 20px; color: var(--hailea); background: var(--paperi);
+           border: 1px dashed var(--viiva); border-radius: 3px; }
+  #laajenna { font: inherit; font-size: 13px; padding: 5px 11px; cursor: pointer;
+              border: 1px solid var(--korostus); background: var(--paperi);
+              color: var(--korostus); border-radius: 3px; margin-top: 8px; }
+  #laajenna[disabled] { opacity: .55; cursor: default; }
+  .takaisin { font: inherit; background: none; border: 0; color: var(--korostus);
+              cursor: pointer; padding: 0; margin-bottom: 8px; }
+
+  /* Kapea ruutu: taulukot vierivät sivusuunnassa sen sijaan että puristuisivat */
+  @media (max-width: 760px) {
+    body { -webkit-text-size-adjust: 100%; }
+    header { padding: 14px 14px 12px; }
+    main { padding: 14px; }
+    footer { padding: 8px 14px 32px; }
+    h1 { font-size: 17px; }
+    .johdanto { font-size: 13px; }
+    .johdanto p + p { display: none; }   /* kapealla ruudulla vain ensimmäinen kappale */
+    #tila { font-size: 12px; }
+    .valikko button { padding: 8px 12px; font-size: 14px; }
+    input[type="search"], select { width: 100%; min-width: 0; }
+    .rivi { gap: 6px; }
+    .kaari table { min-width: max-content; }
+    .kaari td, .kaari th { white-space: nowrap; padding: 6px 8px; }
+    table { font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Suomalaiset ulkomaisissa kilpailuissa</h1>
+  <div id="tila">Ladataan tietokantaa…</div>
+  <div class="johdanto">
+    <p>Suomalaisten tanssijoiden sijoitukset ja suomalaisten tuomarien
+       tuomaroinnit WDSF:n kansainvälisissä kilpailuissa. Mukana ovat vain
+       maakoodilla FIN merkityt henkilöt.</p>
+    <p><a href="index.html">← Kotimaiset kilpailutulokset</a></p>
+  </div>
+</header>
+
+<main>
+  <div class="valikko" role="tablist">
+    <button role="tab" data-nakyma="tanssijat" aria-selected="true">Tanssijat</button>
+    <button role="tab" data-nakyma="tuomarit" aria-selected="false">Tuomarit</button>
+  </div>
+  <div id="ohjaimet" class="rivi"></div>
+  <div id="sisalto"></div>
+</main>
+
+<footer>
+  <p id="kattavuus"></p>
+  <p>Tiedot on koottu automaattisesti WDSF:n julkaisemista kilpailutuloksista
+     osoitteesta <a href="https://www.worlddancesport.org/Calendar/Results">worlddancesport.org</a>.
+     Sivusto ei ole virallinen tulospalvelu.</p>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+<script>
+const KANTA = "data/ulkomaat.sqlite";
+let db = null;
+let nakyma = "tanssijat";
+
+const $ohjaimet = document.getElementById("ohjaimet");
+const $sisalto = document.getElementById("sisalto");
+const $tila = document.getElementById("tila");
+
+function kysely(sql, params = []) {
+  const stmt = db.prepare(sql);
+  stmt.bind(params);
+  const rivit = [];
+  while (stmt.step()) rivit.push(stmt.getAsObject());
+  stmt.free();
+  return rivit;
+}
+
+function teksti(s) {
+  return String(s ?? "").replace(/[&<>"]/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+function pvmSuomeksi(iso) {
+  if (!iso) return "";
+  const [v, k, p] = iso.split("-");
+  return `${Number(p)}.${Number(k)}.${v}`;
+}
+
+function solu(arvo, luokka = "") {
+  return `<td${luokka ? ` class="${luokka}"` : ""}>${teksti(arvo)}</td>`;
+}
+
+function taulukko(otsikot, rivit, asetukset = {}) {
+  if (!rivit.length) return `<div class="tyhja">${teksti(asetukset.tyhja || "Ei osumia.")}</div>`;
+  const thead = otsikot.map(o => `<th>${teksti(o)}</th>`).join("");
+  const tbody = rivit.map((solut, i) => {
+    const attr = asetukset.klikki ? ` class="klikattava" tabindex="0" data-i="${i}"` : "";
+    return `<tr${attr}>${solut.join("")}</tr>`;
+  }).join("");
+  return `<div class="kaari"><table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table></div>`;
+}
+
+function sidoKlikit(kasittelija) {
+  $sisalto.querySelectorAll("tr.klikattava").forEach(tr => {
+    const aja_ = () => kasittelija(Number(tr.dataset.i));
+    tr.addEventListener("click", aja_);
+    tr.addEventListener("keydown", e => { if (e.key === "Enter") aja_(); });
+  });
+}
+
+function aja(fn, ...args) {
+  try { fn(...args); }
+  catch (virhe) {
+    console.error(virhe);
+    $sisalto.innerHTML =
+      `<div class="tyhja">Näkymän piirtäminen epäonnistui.<br><code>${teksti(virhe.message || virhe)}</code></div>`;
+  }
+}
+
+// --- tanssijat --------------------------------------------------------------
+
+function nakymaTanssijat() {
+  const vuodet = kysely(`SELECT DISTINCT substr(pvm,1,4) AS vuosi FROM kilpailu
+                         WHERE pvm IS NOT NULL ORDER BY vuosi DESC`);
+  $ohjaimet.innerHTML = `
+    <input type="search" id="haku" placeholder="Rajaa nimellä, esim. Luttinen" autocomplete="off">
+    <select id="vuosi">
+      <option value="">Kaikki vuodet</option>
+      ${vuodet.map(v => `<option value="${v.vuosi}">${v.vuosi}</option>`).join("")}
+    </select>`;
+  const piirra = () => aja(naytaTanssijat,
+    document.getElementById("haku").value.trim(),
+    document.getElementById("vuosi").value);
+  let viive;
+  document.getElementById("haku").addEventListener("input", () => {
+    clearTimeout(viive); viive = setTimeout(piirra, 180);
+  });
+  document.getElementById("vuosi").addEventListener("change", piirra);
+  piirra();
+}
+
+function naytaTanssijat(hakusana, vuosi) {
+  const ehdot = [], params = [];
+  if (hakusana) { ehdot.push("lower(s.pari) LIKE lower(?)"); params.push(`%${hakusana}%`); }
+  if (vuosi) { ehdot.push("substr(k.pvm,1,4) = ?"); params.push(vuosi); }
+  const missa = ehdot.length ? "WHERE " + ehdot.join(" AND ") : "";
+
+  const rivit = kysely(`
+    SELECT k.pvm, k.nimi AS kilpailu, k.kaupunki, k.maa, s.pari, s.sija_raw
+    FROM sijoitus s JOIN kilpailu k ON k.id = s.kilpailu_id
+    ${missa}
+    ORDER BY k.pvm DESC, s.sija`, params);
+
+  const parit = new Set(rivit.map(r => r.pari)).size;
+
+  $sisalto.innerHTML =
+    `<h2>Sijoitukset <span class="vaimea">· ${rivit.length} tulosta, ${parit} paria</span></h2>` +
+    taulukko(["Päivä", "Kilpailu", "Paikka", "Pari", "Sija"],
+      rivit.map(r => [
+        solu(pvmSuomeksi(r.pvm), "pvm"), solu(r.kilpailu),
+        solu([r.kaupunki, r.maa].filter(Boolean).join(", ")),
+        solu(r.pari), solu(r.sija_raw || "–", "sija"),
+      ]),
+      { tyhja: "Ei osumia tällä rajauksella." });
+}
+
+// --- tuomarit ---------------------------------------------------------------
+
+function nakymaTuomarit() {
+  $ohjaimet.innerHTML = `<span class="vaimea">Eniten tuominneet ensin — klikkaa nimeä nähdäksesi kilpailut</span>`;
+  aja(naytaTuomarit);
+}
+
+function naytaTuomarit() {
+  const rivit = kysely(`
+    SELECT t.nimi, COUNT(DISTINCT t.kilpailu_id) AS kilpailuja,
+           COUNT(DISTINCT k.maa) AS maita,
+           MIN(k.pvm) AS alku, MAX(k.pvm) AS loppu
+    FROM tuomarointi t JOIN kilpailu k ON k.id = t.kilpailu_id
+    GROUP BY t.nimi ORDER BY kilpailuja DESC, t.nimi`);
+
+  $sisalto.innerHTML =
+    `<h2>Suomalaiset tuomarit ulkomailla <span class="vaimea">· ${rivit.length} henkilöä</span></h2>` +
+    taulukko(["Tuomari", "Kilpailuja", "Maita", "Ensimmäinen", "Viimeisin"],
+      rivit.map(r => [
+        solu(r.nimi), solu(r.kilpailuja, "sija luku"), solu(r.maita, "luku"),
+        solu(pvmSuomeksi(r.alku), "pvm"), solu(pvmSuomeksi(r.loppu), "pvm"),
+      ]),
+      { klikki: true, tyhja: "Tuomarointeja ei löytynyt." });
+
+  sidoKlikit(i => aja(naytaTuomari, rivit[i].nimi));
+}
+
+function naytaTuomari(nimi) {
+  const rivit = kysely(`
+    SELECT k.pvm, k.nimi AS kilpailu, k.kaupunki, k.maa, t.rooli
+    FROM tuomarointi t JOIN kilpailu k ON k.id = t.kilpailu_id
+    WHERE t.nimi = ? ORDER BY k.pvm DESC`, [nimi]);
+
+  $sisalto.innerHTML =
+    `<button class="takaisin" id="takaisin">← Takaisin tuomarilistaan</button>` +
+    `<h2>${teksti(nimi)} <span class="vaimea">· ${rivit.length} tuomarointia</span></h2>` +
+    taulukko(["Päivä", "Kilpailu", "Paikka", "Rooli"],
+      rivit.map(r => [
+        solu(pvmSuomeksi(r.pvm), "pvm"), solu(r.kilpailu),
+        solu([r.kaupunki, r.maa].filter(Boolean).join(", ")), solu(r.rooli),
+      ]));
+  document.getElementById("takaisin").addEventListener("click", () => aja(naytaTuomarit));
+}
+
+// --- käynnistys -------------------------------------------------------------
+
+const nakymat = { tanssijat: nakymaTanssijat, tuomarit: nakymaTuomarit };
+
+document.querySelectorAll(".valikko button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".valikko button")
+      .forEach(b => b.setAttribute("aria-selected", String(b === btn)));
+    nakyma = btn.dataset.nakyma;
+    aja(nakymat[nakyma]);
+  });
+});
+
+async function kaynnista() {
+  try {
+    const SQL = await initSqlJs({
+      locateFile: f => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/${f}`
+    });
+    const vastaus = await fetch(KANTA);
+    if (!vastaus.ok) throw new Error(`tietokantaa ei löytynyt (${vastaus.status})`);
+    db = new SQL.Database(new Uint8Array(await vastaus.arrayBuffer()));
+
+    const n = kysely(`
+      SELECT (SELECT COUNT(*) FROM kilpailu)    AS kilpailuja,
+             (SELECT COUNT(*) FROM sijoitus)    AS sijoituksia,
+             (SELECT COUNT(*) FROM tuomarointi) AS tuomarointeja`)[0];
+    const vali = kysely(`SELECT MIN(pvm) AS alku, MAX(pvm) AS loppu FROM kilpailu
+                         WHERE pvm IS NOT NULL`)[0];
+
+    $tila.textContent =
+      `${n.kilpailuja} kilpailua · ${n.sijoituksia} sijoitusta · ${n.tuomarointeja} tuomarointia`;
+    if (vali.alku) {
+      document.getElementById("kattavuus").textContent =
+        `Mukana kilpailut ${pvmSuomeksi(vali.alku)}–${pvmSuomeksi(vali.loppu)}, ` +
+        `joissa oli suomalaisia tanssijoita tai tuomareita.`;
+    }
+    aja(nakymat[nakyma]);
+  } catch (virhe) {
+    $tila.textContent = "Tietokantaa ei voitu avata.";
+    $sisalto.innerHTML =
+      `<div class="tyhja">Tietokannan lataus epäonnistui: ${teksti(virhe.message)}.<br>
+       Tarkista että tiedosto <code>${KANTA}</code> on julkaistu sivuston mukana.</div>`;
+  }
+}
+
+kaynnista();
+</script>
+</body>
+</html>
