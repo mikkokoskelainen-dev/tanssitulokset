@@ -93,7 +93,7 @@
     footer { padding: 8px 14px 32px; }
     h1 { font-size: 17px; }
     .johdanto { font-size: 13px; }
-    .johdanto p + p { display: none; }   /* kapealla ruudulla vain ensimmäinen kappale */
+    .johdanto p + p:not(.linkki) { display: none; }   /* kapealla ruudulla vain ensimmäinen kappale, linkki aina */
     #tila { font-size: 12px; }
     .valikko button { padding: 8px 12px; font-size: 14px; }
     input[type="search"], select { width: 100%; min-width: 0; }
@@ -117,7 +117,7 @@
     <p>Voit etsiä parin tai tanssijan kaikki kilpailut, katsoa yksittäisen
        tuomarin antamat merkinnät ja tuomarointimäärät vuosittain, tai selata
        kilpailuja ja niiden luokkia.</p>
-    <p><a href="ulkomaat.html">Suomalaiset ulkomaisissa kilpailuissa →</a></p>
+    <p class="linkki"><a href="ulkomaat.html">Suomalaiset ulkomaisissa kilpailuissa →</a></p>
   </div>
 </header>
 
