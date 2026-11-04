@@ -153,6 +153,7 @@
 const KANTA_VUOSI = "data/tulokset-vuosi.sqlite";
 const KANTA_TAYSI = "data/tulokset.sqlite";
 let db = null;
+let kannanAikaleima = "";
 let SQL = null;
 let nakyma = "pari";
 let taysiLadattu = false;
@@ -799,6 +800,8 @@ document.querySelectorAll(".valikko button").forEach(btn => {
 async function avaaKanta(url) {
   const vastaus = await fetch(url);
   if (!vastaus.ok) throw new Error(`tietokantaa ei löytynyt (${vastaus.status})`);
+  const muokattu = vastaus.headers.get("last-modified");
+  if (muokattu) kannanAikaleima = new Date(muokattu).toISOString();
   db = new SQL.Database(new Uint8Array(await vastaus.arrayBuffer()));
 }
 
@@ -858,18 +861,22 @@ function vuosiNimi() {
   } catch { return ""; }
 }
 
-/** Tietokannan päivitysaika Suomen aikaan. Tyhjä jos tietoa ei ole. */
+/** Tietokannan päivitysaika Suomen aikaan. Ensisijaisesti kannan omasta
+    meta-taulusta; jos sitä ei ole, palvelimen Last-Modified-otsakkeesta. */
 function paivitysaika() {
+  let iso = "";
   try {
     const r = kysely(`SELECT arvo FROM meta WHERE avain = 'paivitetty'`);
-    if (!r.length) return "";
-    const d = new Date(r[0].arvo);
-    if (isNaN(d)) return "";
-    return d.toLocaleString("fi-FI", {
-      day: "numeric", month: "numeric", year: "numeric",
-      hour: "2-digit", minute: "2-digit", timeZone: "Europe/Helsinki",
-    });
-  } catch { return ""; }
+    if (r.length) iso = r[0].arvo;
+  } catch { /* vanhassa kannassa ei ole meta-taulua */ }
+  if (!iso) iso = kannanAikaleima;
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  return d.toLocaleString("fi-FI", {
+    day: "numeric", month: "numeric", year: "numeric",
+    hour: "2-digit", minute: "2-digit", timeZone: "Europe/Helsinki",
+  });
 }
 
 function paivitaLuvut() {
