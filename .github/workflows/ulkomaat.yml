@@ -1,0 +1,28 @@
+name: Lataa ulkomaantulokset
+on:
+  schedule:
+    - cron: "0 2 * * 1"          # maanantaiyönä klo 2 UTC, eri aikaan kuin kotimainen ajo
+  workflow_dispatch:
+    inputs:
+      alku:
+        description: "Ensimmäinen kuukausi (VVVV-KK)"
+        default: "2026-01"
+      loppu:
+        description: "Viimeinen kuukausi (VVVV-KK)"
+        default: "2026-12"
+permissions:
+  contents: write
+jobs:
+  ulkomaat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 wdsf.py ${{ inputs.alku || '2026-01' }} ${{ inputs.loppu || '2026-12' }}
+      - run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add -A
+          git commit -m "Ulkomaantulosten päivitys" || echo "ei muutoksia"
+          git pull --rebase
+          git push
