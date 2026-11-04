@@ -8,11 +8,16 @@ pienena. Raaka HTML tallennetaan kansioon data/wdsf_raw, jolloin jasentimen
 korjaus voidaan ajaa uudelleen ilman uutta latausta.
 
 Kaytto:
-    python3 wdsf.py hae 2024-01 2026-12   # lataa kuukausivalin
-    python3 wdsf.py jasenna               # rakentaa kannan levylla olevasta
-    python3 wdsf.py 2024-01 2026-12       # molemmat perakkain
+    python3 wdsf.py                       # kuluva vuosi: hae + jasenna
+    python3 wdsf.py 2024-01 2026-12       # tietty kuukausivali: hae + jasenna
+    python3 wdsf.py hae 2024-01 2026-12   # pelkka lataus
+    python3 wdsf.py jasenna               # pelkka kannan rakennus levylta
+
+Ilman parametreja haetaan kuluva vuosi, ja tammi-helmikuussa myos
+edellinen vuosi. Vuosilukua ei siis tarvitse paivittaa kasin.
 """
 
+import datetime
 import html
 import pathlib
 import re
@@ -94,14 +99,22 @@ def fetch(url):
         return None
 
 
-def hae_sivu(polku, url):
-    """Palauttaa sivun tavut: levylta jos on, muuten verkosta."""
+def hae_sivu(polku, url, aina_tuore=False):
+    """Palauttaa sivun tavut: levylta jos on, muuten verkosta.
+
+    aina_tuore=True hakee sivun joka kerta uudelleen. Sita tarvitaan
+    kalenteri- ja tapahtumasivuille, joille ilmestyy uusia kilpailuja:
+    jos ne luettaisiin levylta, uudet tulokset eivat loytyisi koskaan.
+    Yksittaisen kilpailun tulos- ja tuomarisivut eivat enaa muutu."""
     tiedosto = RAW / polku
-    if tiedosto.exists():
+    if tiedosto.exists() and not aina_tuore:
         return tiedosto.read_bytes(), False
     data = fetch(url)
     time.sleep(DELAY)
     if data is None:
+        # Verkosta ei saatu; kaytetaan levylla olevaa versiota jos sellainen on
+        if tiedosto.exists():
+            return tiedosto.read_bytes(), False
         return None, True
     tiedosto.parent.mkdir(parents=True, exist_ok=True)
     tiedosto.write_bytes(data)
@@ -124,7 +137,8 @@ def hae(alku, loppu):
 
     for vuosi, kk in kuukaudet_valilla(alku, loppu):
         data, uusi = hae_sivu(f"calendar/{vuosi}-{kk:02d}.html",
-                              f"{BASE}/Calendar/Results?Month={kk}&Year={vuosi}")
+                              f"{BASE}/Calendar/Results?Month={kk}&Year={vuosi}",
+                              aina_tuore=True)
         if data is None:
             print(f"[{vuosi}-{kk:02d}] kalenteria ei saatu")
             continue
@@ -135,7 +149,8 @@ def hae(alku, loppu):
         print(f"[{vuosi}-{kk:02d}] {len(loydetyt)} tapahtumaa")
 
     for tid in sorted(tapahtumat, key=int):
-        data, _ = hae_sivu(f"events/{tid}.html", BASE + tapahtumat[tid])
+        data, _ = hae_sivu(f"events/{tid}.html", BASE + tapahtumat[tid],
+                           aina_tuore=True)
         if data is None:
             continue
         teksti = data.decode("utf-8", errors="replace")
@@ -324,14 +339,28 @@ def jasenna():
     print(f"  suomalaisten tuomarointeja     {tuomarointeja}")
 
 
+def oletusvali():
+    """Kuluva vuosi. Tammi-helmikuussa mukaan otetaan myos edellinen vuosi,
+    koska vuodenvaihteen kilpailujen tulokset julkaistaan viiveella."""
+    tanaan = datetime.date.today()
+    alkuvuosi = tanaan.year - 1 if tanaan.month <= 2 else tanaan.year
+    return f"{alkuvuosi}-01", f"{tanaan.year}-12"
+
+
 def main():
     args = sys.argv[1:]
     if args and args[0] == "jasenna":
         jasenna()
     elif args and args[0] == "hae":
-        hae(args[1], args[2])
+        alku, loppu = (args[1], args[2]) if len(args) >= 3 else oletusvali()
+        hae(alku, loppu)
     elif len(args) == 2:
         hae(args[0], args[1])
+        jasenna()
+    elif not args:
+        alku, loppu = oletusvali()
+        print(f"Oletusvali: {alku} - {loppu}")
+        hae(alku, loppu)
         jasenna()
     else:
         print(__doc__)
