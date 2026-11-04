@@ -33,12 +33,14 @@ UA = "tanssitulokset-analyysi/0.1 (+mikko@esimerkki.fi)"
 
 SCHEMA = """
 CREATE TABLE kilpailu (
-    id         INTEGER PRIMARY KEY,     -- WDSF:n kilpailunumero
-    nimi       TEXT,                    -- "WDSF Open Latin Senior I"
-    kaupunki   TEXT,
-    maa        TEXT,
-    pvm        TEXT,                    -- ISO
-    url        TEXT
+    id           INTEGER PRIMARY KEY,   -- WDSF:n kilpailunumero (= yksi luokka)
+    nimi         TEXT,                  -- "WDSF Open Latin Senior I"
+    kaupunki     TEXT,
+    maa          TEXT,
+    pvm          TEXT,                  -- ISO
+    url          TEXT,
+    tapahtuma_id INTEGER,               -- WDSF:n tapahtumanumero
+    tapahtuma    TEXT                   -- "Platja d'Aro, Spain 30.10.-1.11.2026"
 );
 
 CREATE TABLE sijoitus (
@@ -178,6 +180,29 @@ def lue_otsikko(sivu):
     return {"nimi": nimi, "kaupunki": kaupunki, "maa": maa, "pvm": pvm}
 
 
+def lue_tapahtuma(sivu):
+    """Sivulla on linkki tapahtumaan, esim.
+    /Events/Platja-dAro-Spain-30102026-01112026-8626 -> numero ja nimi."""
+    m = re.search(r'href="/Events/([A-Za-z0-9\-]*?)-(\d{8})(?:-(\d{8}))?-(\d+)"', sivu)
+    if not m:
+        return None, None
+    paikka, alku, loppu, tid = m.groups()
+    paikka = paikka.replace("-", " ").strip()
+
+    def pv(p):
+        return f"{int(p[0:2])}.{int(p[2:4])}." if p else ""
+
+    if loppu and loppu != alku:
+        # Sama vuosi: "30.10.–1.11.2026", eri vuosi: molemmat vuodet nakyviin
+        if alku[4:8] == loppu[4:8]:
+            aika = f"{pv(alku)}–{pv(loppu)}{loppu[4:8]}"
+        else:
+            aika = f"{pv(alku)}{alku[4:8]}–{pv(loppu)}{loppu[4:8]}"
+    else:
+        aika = f"{pv(alku)}{alku[4:8]}"
+    return int(tid), f"{paikka}, {aika}".strip()
+
+
 def lue_sijoitukset(sivu):
     """Poimii tulostaulukon rivit, joiden maakoodi on MAA."""
     out = []
@@ -237,6 +262,7 @@ def jasenna():
         sivu = tiedosto.read_bytes().decode("utf-8", errors="replace")
         tiedot = lue_otsikko(sivu)
         sijat = lue_sijoitukset(sivu)
+        tap_id, tap_nimi = lue_tapahtuma(sivu)
 
         tuomarit = []
         off = RAW / "officials" / f"{cid}.html"
@@ -245,15 +271,19 @@ def jasenna():
             tuomarit = lue_tuomarit(off_sivu)
             if tiedot is None:
                 tiedot = lue_otsikko(off_sivu)
+            if tap_id is None:
+                tap_id, tap_nimi = lue_tapahtuma(off_sivu)
 
         if not sijat and not tuomarit:
             continue                      # ei suomalaisia -> ei tallenneta
 
         tiedot = tiedot or {"nimi": None, "kaupunki": None, "maa": None, "pvm": None}
-        con.execute("INSERT OR REPLACE INTO kilpailu (id,nimi,kaupunki,maa,pvm,url) "
-                    "VALUES (?,?,?,?,?,?)",
+        con.execute("INSERT OR REPLACE INTO kilpailu "
+                    "(id,nimi,kaupunki,maa,pvm,url,tapahtuma_id,tapahtuma) "
+                    "VALUES (?,?,?,?,?,?,?,?)",
                     (cid, tiedot["nimi"], tiedot["kaupunki"], tiedot["maa"],
-                     tiedot["pvm"], f"{BASE}/Competitions/Ranking/{cid}"))
+                     tiedot["pvm"], f"{BASE}/Competitions/Ranking/{cid}",
+                     tap_id, tap_nimi))
         kilpailuja += 1
 
         for s in sijat:
@@ -272,7 +302,13 @@ def jasenna():
     con.execute("VACUUM")
     con.close()
     print(f"\nValmis: {DB}  ({DB.stat().st_size / 1e6:.2f} MB)")
-    print(f"  kilpailuja joissa suomalaisia  {kilpailuja}")
+    con2 = sqlite3.connect(DB)
+    tapahtumia = con2.execute(
+        "SELECT COUNT(DISTINCT tapahtuma_id) FROM kilpailu "
+        "WHERE tapahtuma_id IS NOT NULL").fetchone()[0]
+    con2.close()
+    print(f"  tapahtumia joissa suomalaisia  {tapahtumia}")
+    print(f"  luokkia joissa suomalaisia     {kilpailuja}")
     print(f"  suomalaisten sijoituksia       {sijoituksia}")
     print(f"  suomalaisten tuomarointeja     {tuomarointeja}")
 
