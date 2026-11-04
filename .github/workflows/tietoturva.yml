@@ -1,0 +1,43 @@
+name: Tietoturvatarkistus
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"        # maanantaisin klo 6.17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  tarkista:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Aja tarkistus
+        id: tarkistus
+        run: python3 tarkista.py
+        continue-on-error: true
+
+      - name: Avaa tai päivitä issue jos löytyi huomautettavaa
+        if: steps.tarkistus.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          OTSIKKO="Tietoturvatarkistus: huomautettavaa $(date +%-d.%-m.%Y)"
+          AVOIN=$(gh issue list --label tietoturva --state open \
+                    --json number --jq '.[0].number')
+          if [ -n "$AVOIN" ]; then
+            gh issue comment "$AVOIN" --body-file loydokset.md
+            echo "Kommentoitiin issueta #$AVOIN"
+          else
+            gh issue create --title "$OTSIKKO" \
+              --body-file loydokset.md --label tietoturva
+          fi
+
+      - name: Merkitse ajo epäonnistuneeksi
+        if: steps.tarkistus.outcome == 'failure'
+        run: |
+          echo "::error::Tietoturvatarkistus löysi huomautettavaa — katso repon issuet."
+          exit 1

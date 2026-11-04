@@ -1,4 +1,4 @@
-sql.js 1.10.3
+sql.js 1.15.2
 Lähde: https://github.com/sql-js/sql-js
 Lisenssi: MIT (sql.js-LICENSE)
 
