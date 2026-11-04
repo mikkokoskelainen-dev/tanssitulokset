@@ -64,6 +64,11 @@ CREATE TABLE tuomarointi (
     rooli       TEXT                    -- Adjudicators, Chairperson, Scrutiny...
 );
 
+CREATE TABLE meta (
+    avain      TEXT PRIMARY KEY,
+    arvo       TEXT
+);
+
 CREATE INDEX i_sijoitus_kilpailu ON sijoitus(kilpailu_id);
 CREATE INDEX i_tuomarointi_nimi  ON tuomarointi(nimi);
 """
@@ -324,6 +329,9 @@ def jasenna():
                         (cid, t["nimi"], t["rooli"]))
             tuomarointeja += 1
 
+    con.execute("INSERT OR REPLACE INTO meta (avain, arvo) VALUES ('paivitetty', ?)",
+                (datetime.datetime.now(datetime.timezone.utc)
+                 .strftime("%Y-%m-%dT%H:%M:%SZ"),))
     con.commit()
     con.execute("VACUUM")
     con.close()

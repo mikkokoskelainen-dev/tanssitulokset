@@ -11,6 +11,7 @@ Kaytto:
 """
 
 import html
+import datetime
 import pathlib
 import re
 import shutil
@@ -462,6 +463,10 @@ def main():
         if kilpailu_nimi:
             print(f"[{comp_id}] {kilpailu_nimi}: {len(tiedostot)} luokkaa")
 
+    db.con.execute(
+        "INSERT OR REPLACE INTO meta (avain, arvo) VALUES ('paivitetty', ?)",
+        (datetime.datetime.now(datetime.timezone.utc)
+         .strftime("%Y-%m-%dT%H:%M:%SZ"),))
     db.con.commit()
     luvut = dict(
         kilpailuja=db.con.execute("SELECT COUNT(*) FROM kilpailu").fetchone()[0],

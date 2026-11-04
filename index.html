@@ -140,6 +140,7 @@
 
 <footer>
   <p id="kattavuus"></p>
+  <p id="paivitetty"></p>
   <p id="koot"></p>
   <p>Aineisto on koottu automaattisesti Suomen Tanssiurheiluliiton julkaisemista
      kilpailutuloksista ja päivittyy viikoittain. Sivusto ei ole virallinen
@@ -857,6 +858,20 @@ function vuosiNimi() {
   } catch { return ""; }
 }
 
+/** Tietokannan päivitysaika Suomen aikaan. Tyhjä jos tietoa ei ole. */
+function paivitysaika() {
+  try {
+    const r = kysely(`SELECT arvo FROM meta WHERE avain = 'paivitetty'`);
+    if (!r.length) return "";
+    const d = new Date(r[0].arvo);
+    if (isNaN(d)) return "";
+    return d.toLocaleString("fi-FI", {
+      day: "numeric", month: "numeric", year: "numeric",
+      hour: "2-digit", minute: "2-digit", timeZone: "Europe/Helsinki",
+    });
+  } catch { return ""; }
+}
+
 function paivitaLuvut() {
   const n = kysely(`
     SELECT (SELECT COUNT(*) FROM kilpailu) AS kilpailuja,
@@ -876,6 +891,13 @@ function paivitaLuvut() {
       `Näkyvissä olevat tiedot kattavat kilpailut ${pvmSuomeksi(vali.alku)}–${pvmSuomeksi(vali.loppu)}: ` +
       `${n.kilpailuja} kilpailua, ${n.luokkia} luokkaa, ${tanssijoita} tanssijaa ` +
       `ja ${n.merkintoja} tuomarimerkintää.`;
+  }
+
+  const haettu = paivitysaika();
+  const $p = document.getElementById("paivitetty");
+  if (haettu && $p) {
+    $p.textContent =
+      `Tiedot haettu viimeksi ${haettu}. Haku ajetaan automaattisesti joka yö.`;
   }
 }
 
