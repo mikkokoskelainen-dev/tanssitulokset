@@ -117,7 +117,7 @@ def kuukaudet_valilla(alku, loppu):
 
 def hae(alku, loppu):
     kilpailut = {}          # cid -> Ranking-sivun polku sellaisena kuin se sivulla on
-    tapahtumat = set()
+    tapahtumat = {}         # tid -> tapahtumasivun polku
 
     for vuosi, kk in kuukaudet_valilla(alku, loppu):
         data, uusi = hae_sivu(f"calendar/{vuosi}-{kk:02d}.html",
@@ -126,17 +126,18 @@ def hae(alku, loppu):
             print(f"[{vuosi}-{kk:02d}] kalenteria ei saatu")
             continue
         teksti = data.decode("utf-8", errors="replace")
-        loydetyt = set(re.findall(r'href="(/Events/[^"#?]+-(\d+))"', teksti))
-        tapahtumat |= loydetyt
+        loydetyt = {tid: polku for polku, tid in re.findall(
+            r'href="(/Events/[^"#?]*?-(\d+))(?:[#?][^"]*)?"', teksti)}
+        tapahtumat.update(loydetyt)
         print(f"[{vuosi}-{kk:02d}] {len(loydetyt)} tapahtumaa")
 
-    for polku, tid in sorted(tapahtumat, key=lambda x: int(x[1])):
-        data, _ = hae_sivu(f"events/{tid}.html", BASE + polku)
+    for tid in sorted(tapahtumat, key=int):
+        data, _ = hae_sivu(f"events/{tid}.html", BASE + tapahtumat[tid])
         if data is None:
             continue
         teksti = data.decode("utf-8", errors="replace")
         for polku_r, cid in re.findall(
-                r'href="(/Competitions/Ranking/[^"#?]*?-(\d+))"', teksti):
+                r'href="(/Competitions/Ranking/[^"#?]*?-(\d+))(?:[#?][^"]*)?"', teksti):
             kilpailut[int(cid)] = polku_r
 
     print(f"\nTapahtumia {len(tapahtumat)}, kilpailuja {len(kilpailut)}. Haetaan tulokset.")
