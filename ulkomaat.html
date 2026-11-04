@@ -135,6 +135,7 @@
 
 <footer>
   <p id="kattavuus"></p>
+  <p id="paivitetty"></p>
   <p>Tiedot on koottu automaattisesti WDSF:n julkaisemista kilpailutuloksista
      osoitteesta <a href="https://www.worlddancesport.org/Calendar/Results">worlddancesport.org</a>.
      Sivusto ei ole virallinen tulospalvelu.</p>
@@ -206,6 +207,20 @@ function aja(fn, ...args) {
     $sisalto.innerHTML =
       `<div class="tyhja">Näkymän piirtäminen epäonnistui.<br><code>${teksti(virhe.message || virhe)}</code></div>`;
   }
+}
+
+/** Tietokannan päivitysaika Suomen aikaan. Tyhjä jos tietoa ei ole. */
+function paivitysaika() {
+  try {
+    const r = kysely(`SELECT arvo FROM meta WHERE avain = 'paivitetty'`);
+    if (!r.length) return "";
+    const d = new Date(r[0].arvo);
+    if (isNaN(d)) return "";
+    return d.toLocaleString("fi-FI", {
+      day: "numeric", month: "numeric", year: "numeric",
+      hour: "2-digit", minute: "2-digit", timeZone: "Europe/Helsinki",
+    });
+  } catch { return ""; }
 }
 
 // --- tanssijat --------------------------------------------------------------
@@ -371,6 +386,11 @@ async function kaynnista() {
       document.getElementById("kattavuus").textContent =
         `Mukana kilpailut ${pvmSuomeksi(vali.alku)}–${pvmSuomeksi(vali.loppu)}, ` +
         `joissa oli suomalaisia tanssijoita tai tuomareita.`;
+    }
+    const haettu = paivitysaika();
+    if (haettu) {
+      document.getElementById("paivitetty").textContent =
+        `Tiedot haettu viimeksi ${haettu}. Haku ajetaan automaattisesti joka yö.`;
     }
     aja(nakymat[nakyma]);
   } catch (virhe) {
