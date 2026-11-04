@@ -8,11 +8,16 @@ pienena. Raaka HTML tallennetaan kansioon data/wdsf_raw, jolloin jasentimen
 korjaus voidaan ajaa uudelleen ilman uutta latausta.
 
 Kaytto:
-    python3 wdsf.py hae 2024-01 2026-12   # lataa kuukausivalin
-    python3 wdsf.py jasenna               # rakentaa kannan levylla olevasta
-    python3 wdsf.py 2024-01 2026-12       # molemmat perakkain
+    python3 wdsf.py                       # kuluva vuosi: hae + jasenna
+    python3 wdsf.py 2024-01 2026-12       # tietty kuukausivali: hae + jasenna
+    python3 wdsf.py hae 2024-01 2026-12   # pelkka lataus
+    python3 wdsf.py jasenna               # pelkka kannan rakennus levylta
+
+Ilman parametreja haetaan kuluva vuosi, ja tammi-helmikuussa myos
+edellinen vuosi. Vuosilukua ei siis tarvitse paivittaa kasin.
 """
 
+import datetime
 import html
 import pathlib
 import re
@@ -40,7 +45,8 @@ CREATE TABLE kilpailu (
     pvm          TEXT,                  -- ISO
     url          TEXT,
     tapahtuma_id INTEGER,               -- WDSF:n tapahtumanumero
-    tapahtuma    TEXT                   -- "Platja d'Aro, Spain 30.10.-1.11.2026"
+    tapahtuma    TEXT,                  -- "Platja d'Aro, Spain 30.10.-1.11.2026"
+    tapahtuma_url TEXT
 );
 
 CREATE TABLE sijoitus (
@@ -56,6 +62,11 @@ CREATE TABLE tuomarointi (
     kilpailu_id INTEGER REFERENCES kilpailu(id),
     nimi        TEXT,
     rooli       TEXT                    -- Adjudicators, Chairperson, Scrutiny...
+);
+
+CREATE TABLE meta (
+    avain      TEXT PRIMARY KEY,
+    arvo       TEXT
 );
 
 CREATE INDEX i_sijoitus_kilpailu ON sijoitus(kilpailu_id);
@@ -93,14 +104,22 @@ def fetch(url):
         return None
 
 
-def hae_sivu(polku, url):
-    """Palauttaa sivun tavut: levylta jos on, muuten verkosta."""
+def hae_sivu(polku, url, aina_tuore=False):
+    """Palauttaa sivun tavut: levylta jos on, muuten verkosta.
+
+    aina_tuore=True hakee sivun joka kerta uudelleen. Sita tarvitaan
+    kalenteri- ja tapahtumasivuille, joille ilmestyy uusia kilpailuja:
+    jos ne luettaisiin levylta, uudet tulokset eivat loytyisi koskaan.
+    Yksittaisen kilpailun tulos- ja tuomarisivut eivat enaa muutu."""
     tiedosto = RAW / polku
-    if tiedosto.exists():
+    if tiedosto.exists() and not aina_tuore:
         return tiedosto.read_bytes(), False
     data = fetch(url)
     time.sleep(DELAY)
     if data is None:
+        # Verkosta ei saatu; kaytetaan levylla olevaa versiota jos sellainen on
+        if tiedosto.exists():
+            return tiedosto.read_bytes(), False
         return None, True
     tiedosto.parent.mkdir(parents=True, exist_ok=True)
     tiedosto.write_bytes(data)
@@ -123,7 +142,8 @@ def hae(alku, loppu):
 
     for vuosi, kk in kuukaudet_valilla(alku, loppu):
         data, uusi = hae_sivu(f"calendar/{vuosi}-{kk:02d}.html",
-                              f"{BASE}/Calendar/Results?Month={kk}&Year={vuosi}")
+                              f"{BASE}/Calendar/Results?Month={kk}&Year={vuosi}",
+                              aina_tuore=True)
         if data is None:
             print(f"[{vuosi}-{kk:02d}] kalenteria ei saatu")
             continue
@@ -134,7 +154,8 @@ def hae(alku, loppu):
         print(f"[{vuosi}-{kk:02d}] {len(loydetyt)} tapahtumaa")
 
     for tid in sorted(tapahtumat, key=int):
-        data, _ = hae_sivu(f"events/{tid}.html", BASE + tapahtumat[tid])
+        data, _ = hae_sivu(f"events/{tid}.html", BASE + tapahtumat[tid],
+                           aina_tuore=True)
         if data is None:
             continue
         teksti = data.decode("utf-8", errors="replace")
@@ -180,17 +201,24 @@ def lue_otsikko(sivu):
     return {"nimi": nimi, "kaupunki": kaupunki, "maa": maa, "pvm": pvm}
 
 
+def lue_url(sivu):
+    """Sivun <base href> kertoo kilpailun oikean osoitteen."""
+    m = re.search(r'<base href="([^"]+)"', sivu)
+    return m.group(1).rstrip("/") if m else None
+
+
 def lue_tapahtuma(sivu):
     """Sivulla on linkki tapahtumaan, esim.
     /Events/Platja-dAro-Spain-30102026-01112026-8626 -> numero ja nimi."""
-    m = re.search(r'href="/Events/([A-Za-z0-9\-]*?)-(\d{8})(?:-(\d{8}))?-(\d+)"', sivu)
+    m = re.search(r'href="(/Events/([A-Za-z0-9\-]*?)-(\d{8})(?:-(\d{8}))?-(\d+))"', sivu)
     if not m:
-        return None, None
-    paikka, alku, loppu, tid = m.groups()
+        return None, None, None
+    polku, paikka, alku, loppu, tid = m.groups()
     paikka = paikka.replace("-", " ").strip()
 
     def pv(p):
         return f"{int(p[0:2])}.{int(p[2:4])}." if p else ""
+
 
     if loppu and loppu != alku:
         # Sama vuosi: "30.10.–1.11.2026", eri vuosi: molemmat vuodet nakyviin
@@ -200,7 +228,7 @@ def lue_tapahtuma(sivu):
             aika = f"{pv(alku)}{alku[4:8]}–{pv(loppu)}{loppu[4:8]}"
     else:
         aika = f"{pv(alku)}{alku[4:8]}"
-    return int(tid), f"{paikka}, {aika}".strip()
+    return int(tid), f"{paikka}, {aika}".strip(), BASE + polku
 
 
 def lue_sijoitukset(sivu):
@@ -262,7 +290,8 @@ def jasenna():
         sivu = tiedosto.read_bytes().decode("utf-8", errors="replace")
         tiedot = lue_otsikko(sivu)
         sijat = lue_sijoitukset(sivu)
-        tap_id, tap_nimi = lue_tapahtuma(sivu)
+        tap_id, tap_nimi, tap_url = lue_tapahtuma(sivu)
+        url = lue_url(sivu)
 
         tuomarit = []
         off = RAW / "officials" / f"{cid}.html"
@@ -272,18 +301,20 @@ def jasenna():
             if tiedot is None:
                 tiedot = lue_otsikko(off_sivu)
             if tap_id is None:
-                tap_id, tap_nimi = lue_tapahtuma(off_sivu)
+                tap_id, tap_nimi, tap_url = lue_tapahtuma(off_sivu)
+            if url is None:
+                url = (lue_url(off_sivu) or "").replace(
+                    "/Competitions/Officials/", "/Competitions/Ranking/") or None
 
         if not sijat and not tuomarit:
             continue                      # ei suomalaisia -> ei tallenneta
 
         tiedot = tiedot or {"nimi": None, "kaupunki": None, "maa": None, "pvm": None}
         con.execute("INSERT OR REPLACE INTO kilpailu "
-                    "(id,nimi,kaupunki,maa,pvm,url,tapahtuma_id,tapahtuma) "
-                    "VALUES (?,?,?,?,?,?,?,?)",
+                    "(id,nimi,kaupunki,maa,pvm,url,tapahtuma_id,tapahtuma,tapahtuma_url) "
+                    "VALUES (?,?,?,?,?,?,?,?,?)",
                     (cid, tiedot["nimi"], tiedot["kaupunki"], tiedot["maa"],
-                     tiedot["pvm"], f"{BASE}/Competitions/Ranking/{cid}",
-                     tap_id, tap_nimi))
+                     tiedot["pvm"], url, tap_id, tap_nimi, tap_url))
         kilpailuja += 1
 
         for s in sijat:
@@ -298,6 +329,9 @@ def jasenna():
                         (cid, t["nimi"], t["rooli"]))
             tuomarointeja += 1
 
+    con.execute("INSERT OR REPLACE INTO meta (avain, arvo) VALUES ('paivitetty', ?)",
+                (datetime.datetime.now(datetime.timezone.utc)
+                 .strftime("%Y-%m-%dT%H:%M:%SZ"),))
     con.commit()
     con.execute("VACUUM")
     con.close()
@@ -313,14 +347,28 @@ def jasenna():
     print(f"  suomalaisten tuomarointeja     {tuomarointeja}")
 
 
+def oletusvali():
+    """Kuluva vuosi. Tammi-helmikuussa mukaan otetaan myos edellinen vuosi,
+    koska vuodenvaihteen kilpailujen tulokset julkaistaan viiveella."""
+    tanaan = datetime.date.today()
+    alkuvuosi = tanaan.year - 1 if tanaan.month <= 2 else tanaan.year
+    return f"{alkuvuosi}-01", f"{tanaan.year}-12"
+
+
 def main():
     args = sys.argv[1:]
     if args and args[0] == "jasenna":
         jasenna()
     elif args and args[0] == "hae":
-        hae(args[1], args[2])
+        alku, loppu = (args[1], args[2]) if len(args) >= 3 else oletusvali()
+        hae(alku, loppu)
     elif len(args) == 2:
         hae(args[0], args[1])
+        jasenna()
+    elif not args:
+        alku, loppu = oletusvali()
+        print(f"Oletusvali: {alku} - {loppu}")
+        hae(alku, loppu)
         jasenna()
     else:
         print(__doc__)

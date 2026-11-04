@@ -26,8 +26,11 @@
   header {
     border-bottom: 1px solid var(--viiva);
     background: var(--paperi);
-    padding: 18px 20px 14px;
+    padding: 0;
   }
+  /* Otsikko, main ja alatunniste jakavat saman leveyden ja reunuksen,
+     jolloin tekstit linjautuvat myös leveällä ruudulla. */
+  .sisus { max-width: 1080px; margin: 0 auto; padding: 18px 20px 14px; }
   h1 { font-size: 19px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
   #tila { color: var(--hailea); font-size: 13px; margin-top: 3px; }
   .johdanto { max-width: 62ch; margin: 12px 0 0; color: #3d4049; font-size: 14px; }
@@ -64,6 +67,7 @@
        position: sticky; top: 0; white-space: nowrap; }
   .luku, .sija, .risti, .pvm { white-space: nowrap; }
   .mestaruus { white-space: nowrap; font-weight: 600; color: var(--korostus); }
+  td a { color: var(--korostus); }
   /* Merkintäruudukko on leveä: siinä sarakkeet pysyvät yhdellä rivillä ja taulukko vierii */
   .ruudukko table { min-width: max-content; }
   .ruudukko td { white-space: nowrap; }
@@ -88,7 +92,8 @@
   /* Kapea ruutu: taulukot vierivät sivusuunnassa sen sijaan että puristuisivat */
   @media (max-width: 760px) {
     body { -webkit-text-size-adjust: 100%; }
-    header { padding: 14px 14px 12px; }
+    header { padding: 0; }
+    .sisus { padding: 14px 14px 12px; }
     main { padding: 14px; }
     footer { padding: 8px 14px 32px; }
     h1 { font-size: 17px; }
@@ -107,13 +112,15 @@
 <body>
 
 <header>
-  <h1>Suomalaiset ulkomaisissa kilpailuissa</h1>
-  <div id="tila">Ladataan tietokantaa…</div>
-  <div class="johdanto">
-    <p>Suomalaisten tanssijoiden sijoitukset ja suomalaisten tuomarien
-       tuomaroinnit WDSF:n kansainvälisissä kilpailuissa. Mukana ovat vain
-       maakoodilla FIN merkityt henkilöt.</p>
-    <p><a href="index.html">← Kotimaiset kilpailutulokset</a></p>
+  <div class="sisus">
+    <h1>Suomalaiset ulkomaisissa kilpailuissa</h1>
+    <div id="tila">Ladataan tietokantaa…</div>
+    <div class="johdanto">
+      <p>Suomalaisten tanssijoiden sijoitukset ja suomalaisten tuomarien
+         tuomaroinnit WDSF:n kansainvälisissä kilpailuissa. Mukana ovat vain
+         maakoodilla FIN merkityt henkilöt.</p>
+      <p><a href="index.html">← Kotimaiset kilpailutulokset</a></p>
+    </div>
   </div>
 </header>
 
@@ -128,6 +135,7 @@
 
 <footer>
   <p id="kattavuus"></p>
+  <p id="paivitetty"></p>
   <p>Tiedot on koottu automaattisesti WDSF:n julkaisemista kilpailutuloksista
      osoitteesta <a href="https://www.worlddancesport.org/Calendar/Results">worlddancesport.org</a>.
      Sivusto ei ole virallinen tulospalvelu.</p>
@@ -167,6 +175,13 @@ function solu(arvo, luokka = "") {
   return `<td${luokka ? ` class="${luokka}"` : ""}>${teksti(arvo)}</td>`;
 }
 
+/** Solu, jonka sisältö on linkki ulos. Ilman osoitetta tavallinen solu. */
+function linkkiSolu(nimi, url, luokka = "") {
+  if (!url) return solu(nimi, luokka);
+  return `<td${luokka ? ` class="${luokka}"` : ""}>` +
+         `<a href="${teksti(url)}" target="_blank" rel="noopener">${teksti(nimi)}</a></td>`;
+}
+
 function taulukko(otsikot, rivit, asetukset = {}) {
   if (!rivit.length) return `<div class="tyhja">${teksti(asetukset.tyhja || "Ei osumia.")}</div>`;
   const thead = otsikot.map(o => `<th>${teksti(o)}</th>`).join("");
@@ -192,6 +207,20 @@ function aja(fn, ...args) {
     $sisalto.innerHTML =
       `<div class="tyhja">Näkymän piirtäminen epäonnistui.<br><code>${teksti(virhe.message || virhe)}</code></div>`;
   }
+}
+
+/** Tietokannan päivitysaika Suomen aikaan. Tyhjä jos tietoa ei ole. */
+function paivitysaika() {
+  try {
+    const r = kysely(`SELECT arvo FROM meta WHERE avain = 'paivitetty'`);
+    if (!r.length) return "";
+    const d = new Date(r[0].arvo);
+    if (isNaN(d)) return "";
+    return d.toLocaleString("fi-FI", {
+      day: "numeric", month: "numeric", year: "numeric",
+      hour: "2-digit", minute: "2-digit", timeZone: "Europe/Helsinki",
+    });
+  } catch { return ""; }
 }
 
 // --- tanssijat --------------------------------------------------------------
@@ -243,7 +272,7 @@ function naytaTanssijat(valittuPari, hakusana, vuosi) {
   const missa = ehdot.length ? "WHERE " + ehdot.join(" AND ") : "";
 
   const rivit = kysely(`
-    SELECT k.pvm, k.nimi AS kilpailu, k.kaupunki, k.maa, k.tapahtuma,
+    SELECT k.pvm, k.nimi AS kilpailu, k.kaupunki, k.maa, k.tapahtuma, k.url,
            s.pari, s.sija_raw
     FROM sijoitus s JOIN kilpailu k ON k.id = s.kilpailu_id
     ${missa}
@@ -255,7 +284,7 @@ function naytaTanssijat(valittuPari, hakusana, vuosi) {
     `<h2>Sijoitukset <span class="vaimea">· ${rivit.length} tulosta, ${parit} paria</span></h2>` +
     taulukko(["Päivä", "Kilpailu", "Paikka", "Pari", "Sija"],
       rivit.map(r => [
-        solu(pvmSuomeksi(r.pvm), "pvm"), solu(r.kilpailu),
+        solu(pvmSuomeksi(r.pvm), "pvm"), linkkiSolu(r.kilpailu, r.url),
         solu([r.kaupunki, r.maa].filter(Boolean).join(", ")),
         solu(r.pari), solu(r.sija_raw || "–", "sija"),
       ]),
@@ -298,7 +327,8 @@ function naytaTuomari(nimi) {
     SELECT COALESCE(k.tapahtuma, k.kaupunki || ', ' || k.maa) AS tapahtuma,
            MIN(k.pvm) AS alku, k.maa,
            COUNT(DISTINCT k.id) AS luokkia,
-           GROUP_CONCAT(DISTINCT t.rooli) AS roolit
+           GROUP_CONCAT(DISTINCT t.rooli) AS roolit,
+           COALESCE(MIN(k.tapahtuma_url), MIN(k.url)) AS url
     FROM tuomarointi t JOIN kilpailu k ON k.id = t.kilpailu_id
     WHERE t.nimi = ?
     GROUP BY COALESCE(CAST(k.tapahtuma_id AS TEXT), k.kaupunki || '|' || k.maa || '|' || k.pvm)
@@ -309,10 +339,10 @@ function naytaTuomari(nimi) {
   $sisalto.innerHTML =
     `<button class="takaisin" id="takaisin">← Takaisin tuomarilistaan</button>` +
     `<h2>${teksti(nimi)} <span class="vaimea">· ${rivit.length} kilpailua, ` +
-    `${luokkia} luokkaa</span></h2>` +
+    `${luokkia} luokkaa · kilpailun nimi avaa WDSF:n sivun</span></h2>` +
     taulukko(["Päivä", "Kilpailu", "Luokkia", "Rooli"],
       rivit.map(r => [
-        solu(pvmSuomeksi(r.alku), "pvm"), solu(r.tapahtuma),
+        solu(pvmSuomeksi(r.alku), "pvm"), linkkiSolu(r.tapahtuma, r.url),
         solu(r.luokkia, "luku"),
         solu((r.roolit || "").split(",").join(", ")),
       ]));
@@ -356,6 +386,11 @@ async function kaynnista() {
       document.getElementById("kattavuus").textContent =
         `Mukana kilpailut ${pvmSuomeksi(vali.alku)}–${pvmSuomeksi(vali.loppu)}, ` +
         `joissa oli suomalaisia tanssijoita tai tuomareita.`;
+    }
+    const haettu = paivitysaika();
+    if (haettu) {
+      document.getElementById("paivitetty").textContent =
+        `Tiedot haettu viimeksi ${haettu}. Haku ajetaan automaattisesti joka yö.`;
     }
     aja(nakymat[nakyma]);
   } catch (virhe) {

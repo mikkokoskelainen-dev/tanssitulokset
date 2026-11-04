@@ -26,8 +26,11 @@
   header {
     border-bottom: 1px solid var(--viiva);
     background: var(--paperi);
-    padding: 18px 20px 14px;
+    padding: 0;
   }
+  /* Otsikko, main ja alatunniste jakavat saman leveyden ja reunuksen,
+     jolloin tekstit linjautuvat myös leveällä ruudulla. */
+  .sisus { max-width: 1080px; margin: 0 auto; padding: 18px 20px 14px; }
   h1 { font-size: 19px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
   #tila { color: var(--hailea); font-size: 13px; margin-top: 3px; }
   .johdanto { max-width: 62ch; margin: 12px 0 0; color: #3d4049; font-size: 14px; }
@@ -88,7 +91,8 @@
   /* Kapea ruutu: taulukot vierivät sivusuunnassa sen sijaan että puristuisivat */
   @media (max-width: 760px) {
     body { -webkit-text-size-adjust: 100%; }
-    header { padding: 14px 14px 12px; }
+    header { padding: 0; }
+    .sisus { padding: 14px 14px 12px; }
     main { padding: 14px; }
     footer { padding: 8px 14px 32px; }
     h1 { font-size: 17px; }
@@ -107,17 +111,19 @@
 <body>
 
 <header>
-  <h1>Tanssiurheilukilpailutulokset Suomessa</h1>
-  <div id="tila">Ladataan tietokantaa…</div>
-  <button id="laajenna" hidden></button>
-  <div class="johdanto">
-    <p>Suomalaisten vakio- ja latinalaistanssikilpailujen tulokset yhdessä
-       haettavassa muodossa. Mukana ovat myös tuomarien yksittäiset merkinnät,
-       joita pääsee tarkastelemaan kilpailu kerrallaan tai koko kauden ajalta.</p>
-    <p>Voit etsiä parin tai tanssijan kaikki kilpailut, katsoa yksittäisen
-       tuomarin antamat merkinnät ja tuomarointimäärät vuosittain, tai selata
-       kilpailuja ja niiden luokkia.</p>
-    <p class="linkki"><a href="ulkomaat.html">Suomalaiset ulkomaisissa kilpailuissa →</a></p>
+  <div class="sisus">
+    <h1>Tanssiurheilukilpailutulokset Suomessa</h1>
+    <div id="tila">Ladataan tietokantaa…</div>
+    <button id="laajenna" hidden></button>
+    <div class="johdanto">
+      <p>Suomalaisten vakio- ja latinalaistanssikilpailujen tulokset yhdessä
+         haettavassa muodossa. Mukana ovat myös tuomarien yksittäiset merkinnät,
+         joita pääsee tarkastelemaan kilpailu kerrallaan tai koko kauden ajalta.</p>
+      <p>Voit etsiä parin tai tanssijan kaikki kilpailut, katsoa yksittäisen
+         tuomarin antamat merkinnät ja tuomarointimäärät vuosittain, tai selata
+         kilpailuja ja niiden luokkia.</p>
+      <p class="linkki"><a href="ulkomaat.html">Suomalaiset ulkomaisissa kilpailuissa →</a></p>
+    </div>
   </div>
 </header>
 
@@ -134,6 +140,7 @@
 
 <footer>
   <p id="kattavuus"></p>
+  <p id="paivitetty"></p>
   <p id="koot"></p>
   <p>Aineisto on koottu automaattisesti Suomen Tanssiurheiluliiton julkaisemista
      kilpailutuloksista ja päivittyy viikoittain. Sivusto ei ole virallinen
@@ -851,6 +858,20 @@ function vuosiNimi() {
   } catch { return ""; }
 }
 
+/** Tietokannan päivitysaika Suomen aikaan. Tyhjä jos tietoa ei ole. */
+function paivitysaika() {
+  try {
+    const r = kysely(`SELECT arvo FROM meta WHERE avain = 'paivitetty'`);
+    if (!r.length) return "";
+    const d = new Date(r[0].arvo);
+    if (isNaN(d)) return "";
+    return d.toLocaleString("fi-FI", {
+      day: "numeric", month: "numeric", year: "numeric",
+      hour: "2-digit", minute: "2-digit", timeZone: "Europe/Helsinki",
+    });
+  } catch { return ""; }
+}
+
 function paivitaLuvut() {
   const n = kysely(`
     SELECT (SELECT COUNT(*) FROM kilpailu) AS kilpailuja,
@@ -870,6 +891,13 @@ function paivitaLuvut() {
       `Näkyvissä olevat tiedot kattavat kilpailut ${pvmSuomeksi(vali.alku)}–${pvmSuomeksi(vali.loppu)}: ` +
       `${n.kilpailuja} kilpailua, ${n.luokkia} luokkaa, ${tanssijoita} tanssijaa ` +
       `ja ${n.merkintoja} tuomarimerkintää.`;
+  }
+
+  const haettu = paivitysaika();
+  const $p = document.getElementById("paivitetty");
+  if (haettu && $p) {
+    $p.textContent =
+      `Tiedot haettu viimeksi ${haettu}. Haku ajetaan automaattisesti joka yö.`;
   }
 }
 
