@@ -534,59 +534,96 @@ function naytaLuokka(luokka, kilpailuId) {
 
 // --- näkymä: tilastot -------------------------------------------------------
 
-function nakymaTilastot() {
-  const vuodet = kysely(`
-    SELECT DISTINCT substr(pvm, 1, 4) AS vuosi FROM luokka
-    WHERE pvm IS NOT NULL ORDER BY vuosi DESC`);
-
-  $ohjaimet.innerHTML = `
-    <select id="tvuosi">
-      ${vuodet.map((v, i) =>
-        `<option value="${v.vuosi}"${i === 0 ? " selected" : ""}>${v.vuosi}</option>`).join("")}
-      <option value="">Kaikki vuodet</option>
-    </select>
-    <span class="vaimea">Eniten tuominneet ensin</span>`;
-
-  const piirra = () => aja(naytaTilastot, document.getElementById("tvuosi").value);
-  document.getElementById("tvuosi").addEventListener("change", piirra);
-  piirra();
-}
-
-function naytaTilastot(vuosi) {
-  const rivit = kysely(`
-    SELECT tu.id, tu.nimi, k.id AS kilpailu_id, k.nimi AS kilpailu,
+/** Kaikki tuomaroinnit kerralla: yksi rivi per tuomari × vuosi × kilpailu. */
+function tuomarointiAineisto() {
+  return kysely(`
+    SELECT tu.id, tu.nimi, substr(l.pvm, 1, 4) AS vuosi,
+           k.id AS kilpailu_id, k.nimi AS kilpailu,
            COUNT(DISTINCT l.id) AS luokkia
     FROM luokan_tuomari lt
     JOIN tuomari tu ON tu.id = lt.tuomari_id
     JOIN luokka l ON l.id = lt.luokka_id
     JOIN kilpailu k ON k.id = l.kilpailu_id
-    ${vuosi ? "WHERE substr(l.pvm, 1, 4) = ?" : ""}
-    GROUP BY tu.id, k.id`, vuosi ? [vuosi] : []);
+    GROUP BY tu.id, substr(l.pvm, 1, 4), k.id`);
+}
 
+function nakymaTilastot() {
+  $ohjaimet.innerHTML = `
+    <select id="jaottelu">
+      <option value="vuosi">Sarakkeet: vuodet</option>
+      <option value="taso">Sarakkeet: kilpailun taso</option>
+    </select>
+    <select id="mittari">
+      <option value="kilpailuja">Luvut: kilpailujen määrä</option>
+      <option value="luokkia">Luvut: luokkien määrä</option>
+    </select>
+    <span class="vaimea">Eniten tuominneet ensin</span>`;
+
+  const piirra = () => aja(naytaTilastot,
+    document.getElementById("jaottelu").value,
+    document.getElementById("mittari").value);
+  document.getElementById("jaottelu").addEventListener("change", piirra);
+  document.getElementById("mittari").addEventListener("change", piirra);
+  piirra();
+}
+
+function naytaTilastot(jaottelu, mittari) {
+  const rivit = tuomarointiAineisto();
+  if (!rivit.length) {
+    $sisalto.innerHTML = `<div class="tyhja">Tuomarointeja ei löytynyt.</div>`;
+    return;
+  }
+
+  // tuomari -> sarake -> { kilpailuja, luokkia }
   const tuomarit = {};
+  const sarakkeet = new Set();
   rivit.forEach(r => {
-    if (!tuomarit[r.id]) tuomarit[r.id] = { nimi: r.nimi, kilpailuja: 0, luokkia: 0, tasot: {} };
+    const avain = jaottelu === "vuosi" ? (r.vuosi || "?") : taso(r.kilpailu);
+    sarakkeet.add(avain);
+    if (!tuomarit[r.id]) {
+      tuomarit[r.id] = { nimi: r.nimi, solut: {}, yht: { kilpailuja: 0, luokkia: 0 } };
+    }
     const t = tuomarit[r.id];
-    t.kilpailuja += 1;
-    t.luokkia += r.luokkia;
-    const taso_ = taso(r.kilpailu);
-    t.tasot[taso_] = (t.tasot[taso_] || 0) + r.luokkia;
+    if (!t.solut[avain]) t.solut[avain] = { kilpailuja: 0, luokkia: 0 };
+    t.solut[avain].kilpailuja += 1;
+    t.solut[avain].luokkia += r.luokkia;
+    t.yht.kilpailuja += 1;
+    t.yht.luokkia += r.luokkia;
   });
 
+  // Vuodet uusin ensin, tasot kiinteässä järjestyksessä
+  const otsikot = jaottelu === "vuosi"
+    ? [...sarakkeet].sort().reverse()
+    : TASOT.filter(t => sarakkeet.has(t));
+
   const jarjestetty = Object.values(tuomarit)
-    .sort((a, b) => b.kilpailuja - a.kilpailuja || b.luokkia - a.luokkia
+    .sort((a, b) => b.yht[mittari] - a.yht[mittari]
+                    || b.yht.luokkia - a.yht.luokkia
                     || a.nimi.localeCompare(b.nimi, "fi"));
 
+  const taulukkorivit = jarjestetty.map((t, i) => [
+    solu(i + 1, "luku vaimea"),
+    solu(t.nimi),
+    solu(t.yht[mittari], "sija luku"),
+    ...otsikot.map(s => solu(t.solut[s] ? t.solut[s][mittari] : "·",
+                             t.solut[s] ? "luku" : "luku vaimea")),
+  ]);
+
+  // Sarakekohtaiset summat omalle rivilleen
+  const summat = otsikot.map(s =>
+    jarjestetty.reduce((n, t) => n + (t.solut[s] ? t.solut[s][mittari] : 0), 0));
+  const kaikki = jarjestetty.reduce((n, t) => n + t.yht[mittari], 0);
+  taulukkorivit.push([
+    solu(""), solu("Kaikki tuomarit", "vaimea"), solu(kaikki, "sija luku"),
+    ...summat.map(n => solu(n || "·", n ? "sija luku" : "luku vaimea")),
+  ]);
+
+  const mittariNimi = mittari === "kilpailuja" ? "tuomarointia kilpailuissa" : "tuomaroitua luokkaa";
+
   $sisalto.innerHTML =
-    `<h2>Tuomaroinnit ${vuosi || "kaikkina vuosina"} <span class="vaimea">· ${jarjestetty.length} tuomaria</span></h2>` +
-    taulukko(
-      ["#", "Tuomari", "Kilpailuja", "Luokkia", ...TASOT],
-      jarjestetty.map((t, i) => [
-        solu(i + 1, "luku vaimea"), solu(t.nimi),
-        solu(t.kilpailuja, "sija luku"), solu(t.luokkia, "luku"),
-        ...TASOT.map(x => solu(t.tasot[x] || "·", t.tasot[x] ? "luku" : "luku vaimea")),
-      ]),
-      { tyhja: "Ei tuomarointeja tältä vuodelta." });
+    `<h2>Tuomaroinnit ${jaottelu === "vuosi" ? "vuosittain" : "kilpailun tason mukaan"} ` +
+    `<span class="vaimea">· ${jarjestetty.length} tuomaria, yhteensä ${kaikki} ${mittariNimi}</span></h2>` +
+    taulukko(["#", "Tuomari", "Yhteensä", ...otsikot], taulukkorivit, { ruudukko: true });
 }
 
 // --- käynnistys -------------------------------------------------------------
