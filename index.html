@@ -63,6 +63,7 @@
   th { font-weight: 600; font-size: 12px; color: var(--hailea); background: #fafaf8;
        position: sticky; top: 0; white-space: nowrap; }
   .luku, .sija, .risti, .pvm { white-space: nowrap; }
+  .mestaruus { white-space: nowrap; font-weight: 600; color: var(--korostus); }
   /* Merkintäruudukko on leveä: siinä sarakkeet pysyvät yhdellä rivillä ja taulukko vierii */
   .ruudukko table { min-width: max-content; }
   .ruudukko td { white-space: nowrap; }
@@ -550,21 +551,105 @@ function tuomarointiAineisto() {
 function nakymaTilastot() {
   $ohjaimet.innerHTML = `
     <select id="jaottelu">
-      <option value="vuosi">Sarakkeet: vuodet</option>
-      <option value="taso">Sarakkeet: kilpailun taso</option>
+      <option value="vuosi">Kaikki tuomaroinnit vuosittain</option>
+      <option value="taso">Kaikki tuomaroinnit tason mukaan</option>
+      <option value="mestaruus">Mestaruuskilpailut vuosittain</option>
     </select>
     <select id="mittari">
       <option value="kilpailuja">Luvut: kilpailujen määrä</option>
       <option value="luokkia">Luvut: luokkien määrä</option>
     </select>
-    <span class="vaimea">Eniten tuominneet ensin</span>`;
+    <span class="vaimea" id="vihje">Eniten tuominneet ensin</span>`;
 
-  const piirra = () => aja(naytaTilastot,
-    document.getElementById("jaottelu").value,
-    document.getElementById("mittari").value);
+  const piirra = () => {
+    const jaottelu = document.getElementById("jaottelu").value;
+    const mestaruus = jaottelu === "mestaruus";
+    document.getElementById("mittari").hidden = mestaruus;
+    document.getElementById("vihje").textContent = mestaruus
+      ? "SM-, GP- ja IKM-kilpailut, eniten tuominneet ensin"
+      : "Eniten tuominneet ensin";
+    if (mestaruus) aja(naytaMestaruudet);
+    else aja(naytaTilastot, jaottelu, document.getElementById("mittari").value);
+  };
   document.getElementById("jaottelu").addEventListener("change", piirra);
   document.getElementById("mittari").addEventListener("change", piirra);
   piirra();
+}
+
+/** Mestaruuskilpailujen tuomarikierto: rivit tuomarit, sarakkeet vuodet,
+    soluissa ne mestaruuskilpailut joissa hän on kyseisenä vuonna tuominnut. */
+const MESTARUUSTASOT = ["SM", "GP", "IKM"];
+
+function naytaMestaruudet() {
+  const rivit = tuomarointiAineisto()
+    .filter(r => MESTARUUSTASOT.includes(taso(r.kilpailu)));
+
+  if (!rivit.length) {
+    $sisalto.innerHTML =
+      `<div class="tyhja">Mestaruuskilpailujen tuomarointeja ei löytynyt.</div>`;
+    return;
+  }
+
+  const tuomarit = {};
+  const vuodet = new Set();
+  rivit.forEach(r => {
+    const vuosi = r.vuosi || "?";
+    vuodet.add(vuosi);
+    if (!tuomarit[r.id]) tuomarit[r.id] = { id: r.id, nimi: r.nimi, solut: {}, yht: 0 };
+    const t = tuomarit[r.id];
+    (t.solut[vuosi] = t.solut[vuosi] || []).push(taso(r.kilpailu));
+    t.yht += 1;
+  });
+
+  const otsikot = [...vuodet].sort().reverse();
+
+  /** Esim. ["SM","SM","GP"] -> "2×SM · GP", järjestys SM, GP, IKM. */
+  function solunTeksti(tasot) {
+    if (!tasot) return "";
+    const n = {};
+    tasot.forEach(t => { n[t] = (n[t] || 0) + 1; });
+    return MESTARUUSTASOT.filter(t => n[t])
+      .map(t => (n[t] > 1 ? `${n[t]}×${t}` : t)).join(" · ");
+  }
+
+  const jarjestetty = Object.values(tuomarit)
+    .sort((a, b) => b.yht - a.yht || a.nimi.localeCompare(b.nimi, "fi"));
+
+  const taulukkorivit = jarjestetty.map((t, i) => [
+    solu(i + 1, "luku vaimea"),
+    solu(t.nimi),
+    solu(t.yht, "sija luku"),
+    ...otsikot.map(v => {
+      const teksti_ = solunTeksti(t.solut[v]);
+      return solu(teksti_ || "·", teksti_ ? "mestaruus" : "luku vaimea");
+    }),
+  ]);
+
+  // Alariville montako mestaruuskilpailua kunakin vuonna oli ja montako tuomaria
+  const vuosittain = {};
+  rivit.forEach(r => {
+    const v = r.vuosi || "?";
+    (vuosittain[v] = vuosittain[v] || new Set()).add(r.kilpailu_id);
+  });
+  taulukkorivit.push([
+    solu(""), solu("Kilpailuja vuodessa", "vaimea"),
+    solu(new Set(rivit.map(r => r.kilpailu_id)).size, "sija luku"),
+    ...otsikot.map(v => solu(vuosittain[v] ? vuosittain[v].size : "·",
+                             vuosittain[v] ? "sija luku" : "luku vaimea")),
+  ]);
+
+  $sisalto.innerHTML =
+    `<h2>Mestaruuskilpailujen tuomarikierto ` +
+    `<span class="vaimea">· ${jarjestetty.length} tuomaria, ` +
+    `${new Set(rivit.map(r => r.kilpailu_id)).size} kilpailua</span></h2>` +
+    taulukko(["#", "Tuomari", "Yhteensä", ...otsikot], taulukkorivit,
+             { ruudukko: true, klikki: true });
+
+  sidoKlikit(i => {
+    if (i < jarjestetty.length) {
+      aja(naytaTuomarinKilpailut, jarjestetty[i], "mestaruus", "kilpailuja");
+    }
+  });
 }
 
 function naytaTilastot(jaottelu, mittari) {
@@ -581,7 +666,7 @@ function naytaTilastot(jaottelu, mittari) {
     const avain = jaottelu === "vuosi" ? (r.vuosi || "?") : taso(r.kilpailu);
     sarakkeet.add(avain);
     if (!tuomarit[r.id]) {
-      tuomarit[r.id] = { nimi: r.nimi, solut: {}, yht: { kilpailuja: 0, luokkia: 0 } };
+      tuomarit[r.id] = { id: r.id, nimi: r.nimi, solut: {}, yht: { kilpailuja: 0, luokkia: 0 } };
     }
     const t = tuomarit[r.id];
     if (!t.solut[avain]) t.solut[avain] = { kilpailuja: 0, luokkia: 0 };
@@ -623,7 +708,55 @@ function naytaTilastot(jaottelu, mittari) {
   $sisalto.innerHTML =
     `<h2>Tuomaroinnit ${jaottelu === "vuosi" ? "vuosittain" : "kilpailun tason mukaan"} ` +
     `<span class="vaimea">· ${jarjestetty.length} tuomaria, yhteensä ${kaikki} ${mittariNimi}</span></h2>` +
-    taulukko(["#", "Tuomari", "Yhteensä", ...otsikot], taulukkorivit, { ruudukko: true });
+    taulukko(["#", "Tuomari", "Yhteensä", ...otsikot], taulukkorivit,
+             { ruudukko: true, klikki: true });
+
+  // Viimeinen rivi on yhteissumma, ei tuomari
+  sidoKlikit(i => {
+    if (i < jarjestetty.length) {
+      aja(naytaTuomarinKilpailut, jarjestetty[i], jaottelu, mittari);
+    }
+  });
+}
+
+/** Yhden tuomarin kaikki kilpailut, tilastotaulukosta klikattuna. */
+function naytaTuomarinKilpailut(tuomari, jaottelu, mittari) {
+  const kilpailut = kysely(`
+    SELECT k.id, k.nimi, MIN(l.pvm) AS pvm, COUNT(DISTINCT l.id) AS luokkia
+    FROM luokan_tuomari lt
+    JOIN luokka l ON l.id = lt.luokka_id
+    JOIN kilpailu k ON k.id = l.kilpailu_id
+    WHERE lt.tuomari_id = ?
+    GROUP BY k.id
+    ORDER BY pvm DESC`, [tuomari.id]);
+
+  const luokkia = kilpailut.reduce((n, k) => n + k.luokkia, 0);
+
+  $sisalto.innerHTML =
+    `<button class="takaisin" id="takaisin">← Takaisin tilastoihin</button>` +
+    `<h2>${teksti(tuomari.nimi)} <span class="vaimea">· ${kilpailut.length} kilpailua, ` +
+    `${luokkia} luokkaa</span></h2>` +
+    taulukko(["Päivä", "Kilpailu", "Taso", "Luokkia"],
+      kilpailut.map(k => [
+        solu(pvmSuomeksi(k.pvm), "pvm"), solu(k.nimi),
+        solu(taso(k.nimi)), solu(k.luokkia, "luku"),
+      ]),
+      { klikki: true, tyhja: "Kilpailuja ei löytynyt." });
+
+  sidoKlikit(i => {
+    aja(naytaKilpailu, kilpailut[i].id);
+    // Paluupolku takaisin tämän tuomarin kilpailuihin
+    const nappi = document.createElement("button");
+    nappi.className = "takaisin";
+    nappi.textContent = "← Takaisin tuomarin kilpailuihin";
+    nappi.addEventListener("click", () =>
+      aja(naytaTuomarinKilpailut, tuomari, jaottelu, mittari));
+    $sisalto.prepend(nappi);
+  });
+
+  document.getElementById("takaisin").addEventListener("click", () =>
+    jaottelu === "mestaruus" ? aja(naytaMestaruudet)
+                             : aja(naytaTilastot, jaottelu, mittari));
 }
 
 // --- käynnistys -------------------------------------------------------------
