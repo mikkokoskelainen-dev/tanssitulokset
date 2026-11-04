@@ -199,31 +199,52 @@ function aja(fn, ...args) {
 function nakymaTanssijat() {
   const vuodet = kysely(`SELECT DISTINCT substr(pvm,1,4) AS vuosi FROM kilpailu
                          WHERE pvm IS NOT NULL ORDER BY vuosi DESC`);
+  const parit = kysely(`
+    SELECT s.pari, COUNT(*) AS n FROM sijoitus s
+    GROUP BY s.pari ORDER BY s.pari COLLATE NOCASE`);
+
   $ohjaimet.innerHTML = `
-    <input type="search" id="haku" placeholder="Rajaa nimellä, esim. Luttinen" autocomplete="off">
+    <select id="pari">
+      <option value="">Kaikki parit (${parit.length})</option>
+      ${parit.map(p => `<option value="${teksti(p.pari)}">${teksti(p.pari)} — ${p.n}</option>`).join("")}
+    </select>
     <select id="vuosi">
       <option value="">Kaikki vuodet</option>
       ${vuodet.map(v => `<option value="${v.vuosi}">${v.vuosi}</option>`).join("")}
-    </select>`;
+    </select>
+    <input type="search" id="haku" placeholder="tai kirjoita nimi" autocomplete="off">`;
+
   const piirra = () => aja(naytaTanssijat,
+    document.getElementById("pari").value,
     document.getElementById("haku").value.trim(),
     document.getElementById("vuosi").value);
+
   let viive;
   document.getElementById("haku").addEventListener("input", () => {
+    // Vapaa haku ohittaa valikosta valitun parin
+    if (document.getElementById("haku").value.trim()) {
+      document.getElementById("pari").value = "";
+    }
     clearTimeout(viive); viive = setTimeout(piirra, 180);
+  });
+  document.getElementById("pari").addEventListener("change", () => {
+    document.getElementById("haku").value = "";
+    piirra();
   });
   document.getElementById("vuosi").addEventListener("change", piirra);
   piirra();
 }
 
-function naytaTanssijat(hakusana, vuosi) {
+function naytaTanssijat(valittuPari, hakusana, vuosi) {
   const ehdot = [], params = [];
-  if (hakusana) { ehdot.push("lower(s.pari) LIKE lower(?)"); params.push(`%${hakusana}%`); }
+  if (valittuPari) { ehdot.push("s.pari = ?"); params.push(valittuPari); }
+  else if (hakusana) { ehdot.push("lower(s.pari) LIKE lower(?)"); params.push(`%${hakusana}%`); }
   if (vuosi) { ehdot.push("substr(k.pvm,1,4) = ?"); params.push(vuosi); }
   const missa = ehdot.length ? "WHERE " + ehdot.join(" AND ") : "";
 
   const rivit = kysely(`
-    SELECT k.pvm, k.nimi AS kilpailu, k.kaupunki, k.maa, s.pari, s.sija_raw
+    SELECT k.pvm, k.nimi AS kilpailu, k.kaupunki, k.maa, k.tapahtuma,
+           s.pari, s.sija_raw
     FROM sijoitus s JOIN kilpailu k ON k.id = s.kilpailu_id
     ${missa}
     ORDER BY k.pvm DESC, s.sija`, params);
@@ -249,18 +270,22 @@ function nakymaTuomarit() {
 }
 
 function naytaTuomarit() {
+  // Yksi kilpailu = yksi tapahtuma. Luokkia on kussakin useita, ne omana lukunaan.
   const rivit = kysely(`
-    SELECT t.nimi, COUNT(DISTINCT t.kilpailu_id) AS kilpailuja,
+    SELECT t.nimi,
+           COUNT(DISTINCT COALESCE(CAST(k.tapahtuma_id AS TEXT), k.kaupunki || '|' || k.maa || '|' || k.pvm)) AS kilpailuja,
+           COUNT(DISTINCT t.kilpailu_id) AS luokkia,
            COUNT(DISTINCT k.maa) AS maita,
            MIN(k.pvm) AS alku, MAX(k.pvm) AS loppu
     FROM tuomarointi t JOIN kilpailu k ON k.id = t.kilpailu_id
-    GROUP BY t.nimi ORDER BY kilpailuja DESC, t.nimi`);
+    GROUP BY t.nimi ORDER BY kilpailuja DESC, luokkia DESC, t.nimi`);
 
   $sisalto.innerHTML =
     `<h2>Suomalaiset tuomarit ulkomailla <span class="vaimea">· ${rivit.length} henkilöä</span></h2>` +
-    taulukko(["Tuomari", "Kilpailuja", "Maita", "Ensimmäinen", "Viimeisin"],
+    taulukko(["Tuomari", "Kilpailuja", "Luokkia", "Maita", "Ensimmäinen", "Viimeisin"],
       rivit.map(r => [
-        solu(r.nimi), solu(r.kilpailuja, "sija luku"), solu(r.maita, "luku"),
+        solu(r.nimi), solu(r.kilpailuja, "sija luku"), solu(r.luokkia, "luku"),
+        solu(r.maita, "luku"),
         solu(pvmSuomeksi(r.alku), "pvm"), solu(pvmSuomeksi(r.loppu), "pvm"),
       ]),
       { klikki: true, tyhja: "Tuomarointeja ei löytynyt." });
@@ -270,17 +295,26 @@ function naytaTuomarit() {
 
 function naytaTuomari(nimi) {
   const rivit = kysely(`
-    SELECT k.pvm, k.nimi AS kilpailu, k.kaupunki, k.maa, t.rooli
+    SELECT COALESCE(k.tapahtuma, k.kaupunki || ', ' || k.maa) AS tapahtuma,
+           MIN(k.pvm) AS alku, k.maa,
+           COUNT(DISTINCT k.id) AS luokkia,
+           GROUP_CONCAT(DISTINCT t.rooli) AS roolit
     FROM tuomarointi t JOIN kilpailu k ON k.id = t.kilpailu_id
-    WHERE t.nimi = ? ORDER BY k.pvm DESC`, [nimi]);
+    WHERE t.nimi = ?
+    GROUP BY COALESCE(CAST(k.tapahtuma_id AS TEXT), k.kaupunki || '|' || k.maa || '|' || k.pvm)
+    ORDER BY alku DESC`, [nimi]);
+
+  const luokkia = rivit.reduce((n, r) => n + r.luokkia, 0);
 
   $sisalto.innerHTML =
     `<button class="takaisin" id="takaisin">← Takaisin tuomarilistaan</button>` +
-    `<h2>${teksti(nimi)} <span class="vaimea">· ${rivit.length} tuomarointia</span></h2>` +
-    taulukko(["Päivä", "Kilpailu", "Paikka", "Rooli"],
+    `<h2>${teksti(nimi)} <span class="vaimea">· ${rivit.length} kilpailua, ` +
+    `${luokkia} luokkaa</span></h2>` +
+    taulukko(["Päivä", "Kilpailu", "Luokkia", "Rooli"],
       rivit.map(r => [
-        solu(pvmSuomeksi(r.pvm), "pvm"), solu(r.kilpailu),
-        solu([r.kaupunki, r.maa].filter(Boolean).join(", ")), solu(r.rooli),
+        solu(pvmSuomeksi(r.alku), "pvm"), solu(r.tapahtuma),
+        solu(r.luokkia, "luku"),
+        solu((r.roolit || "").split(",").join(", ")),
       ]));
   document.getElementById("takaisin").addEventListener("click", () => aja(naytaTuomarit));
 }
@@ -308,14 +342,16 @@ async function kaynnista() {
     db = new SQL.Database(new Uint8Array(await vastaus.arrayBuffer()));
 
     const n = kysely(`
-      SELECT (SELECT COUNT(*) FROM kilpailu)    AS kilpailuja,
+      SELECT (SELECT COUNT(DISTINCT COALESCE(CAST(tapahtuma_id AS TEXT), kaupunki || '|' || maa || '|' || pvm)) FROM kilpailu) AS kilpailuja,
+             (SELECT COUNT(*) FROM kilpailu)    AS luokkia,
              (SELECT COUNT(*) FROM sijoitus)    AS sijoituksia,
              (SELECT COUNT(*) FROM tuomarointi) AS tuomarointeja`)[0];
     const vali = kysely(`SELECT MIN(pvm) AS alku, MAX(pvm) AS loppu FROM kilpailu
                          WHERE pvm IS NOT NULL`)[0];
 
     $tila.textContent =
-      `${n.kilpailuja} kilpailua · ${n.sijoituksia} sijoitusta · ${n.tuomarointeja} tuomarointia`;
+      `${n.kilpailuja} kilpailua · ${n.luokkia} luokkaa · ${n.sijoituksia} sijoitusta · ` +
+      `${n.tuomarointeja} tuomarointia`;
     if (vali.alku) {
       document.getElementById("kattavuus").textContent =
         `Mukana kilpailut ${pvmSuomeksi(vali.alku)}–${pvmSuomeksi(vali.loppu)}, ` +
