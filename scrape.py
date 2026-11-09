@@ -25,6 +25,9 @@ OUT = pathlib.Path("data/raw")
 # Kohteliaisuusasetukset: yksi pyynto sekunnissa ja tunnistautuva User-Agent,
 # jossa on omat yhteystietosi. VAIHDA sahkopostiosoite omaksesi.
 DELAY = 1.0
+# Asetetaan todeksi kun ajetaan yksi kilpailu kerrallaan: tulostaa
+# HTTP-koodit, jotta puuttuvan kilpailun syyn nakee lokista.
+TARKKA = False
 UA = "tanssitulokset-analyysi/0.1 (+mikko@valssaamo.com)"
 
 # Loytaa kaikki linkit, jotka osoittavat index.html-sivulle (luokkasivut).
@@ -51,7 +54,9 @@ def fetch(url):
         with urllib.request.urlopen(req, timeout=30) as resp:
             return resp.read()
     except urllib.error.HTTPError as e:
-        if e.code in (404, 403):
+        if TARKKA:
+            print(f"    HTTP {e.code}: {url}")
+        if e.code in (404, 403, 410):
             return None
         raise
     except urllib.error.URLError as e:
@@ -96,16 +101,32 @@ def scrape_competition(comp_id):
     comp_url = f"{BASE}/{comp_id}/"
     index_path = f"{comp_id}/index.html"
 
-    if exists(index_path):
-        html = (OUT / index_path).read_bytes()
-        print(f"[{comp_id}] etusivu jo levylla")
-    else:
-        html = fetch(comp_url + "index.html")
+    # Etusivu haetaan AINA tuoreena, ei levylta: kilpailuun ilmestyy
+    # luokkia viela julkaisun jalkeen, ja levylta luettuna ne eivat
+    # loytyisi koskaan. TPS kirjoittaa tiedoston joko pienella tai
+    # isolla alkukirjaimella, joten kokeillaan molemmat.
+    html = None
+    for nimi in ("index.html", "Index.html"):
+        html = fetch(comp_url + nimi)
         time.sleep(DELAY)
-        if html is None:
+        if html is not None:
+            break
+
+    if html is None:
+        if exists(index_path):
+            # Verkosta ei saatu; jatketaan levyn versiolla jottei
+            # yksittainen hairio pyyhi jo haettuja luokkia.
+            html = (OUT / index_path).read_bytes()
+            print(f"[{comp_id}] etusivua ei saatu verkosta, kaytetaan levyn versiota")
+        else:
             return False
+    else:
+        vanha = (OUT / index_path).read_bytes() if exists(index_path) else None
         save(index_path, html)
-        print(f"[{comp_id}] etusivu ladattu")
+        if vanha is None:
+            print(f"[{comp_id}] etusivu ladattu")
+        elif vanha != html:
+            print(f"[{comp_id}] etusivu paivittyi")
 
     links = class_links(html, comp_url)
     if not links:
@@ -130,8 +151,10 @@ def scrape_competition(comp_id):
 
 
 def main():
+    global TARKKA
     start = int(sys.argv[1]) if len(sys.argv) > 1 else 1
     end = int(sys.argv[2]) if len(sys.argv) > 2 else 1100
+    TARKKA = (start == end)
 
     found = 0
     for comp_id in range(start, end + 1):
