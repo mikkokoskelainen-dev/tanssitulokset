@@ -1,7 +1,7 @@
 name: Lataa tulokset
 on:
   schedule:
-    - cron: "0 1 * * *"    # joka yö klo 1 UTC
+    - cron: "37 3 * * *"   # joka yö klo 3.37 UTC (Suomen aikaa 5.37)
   workflow_dispatch:
     inputs:
       alku:

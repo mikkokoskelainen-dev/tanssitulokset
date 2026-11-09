@@ -1,7 +1,7 @@
 name: Lataa ulkomaantulokset
 on:
   schedule:
-    - cron: "0 2 * * *"          # joka yö klo 2 UTC, tunti kotimaisen ajon jälkeen
+    - cron: "43 4 * * *"          # joka yö klo 4.43 UTC, tunti kotimaisen ajon jälkeen
   workflow_dispatch:
     inputs:
       alku:
