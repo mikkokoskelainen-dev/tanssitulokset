@@ -150,6 +150,7 @@
 <footer>
   <p id="kattavuus"></p>
   <p id="paivitetty"></p>
+  <p id="yhteys"></p>
   <p id="koot"></p>
   <p>Aineisto on koottu automaattisesti Suomen Tanssiurheiluliiton julkaisemista
      kilpailutuloksista ja päivittyy viikoittain. Sivusto ei ole virallinen
@@ -974,6 +975,19 @@ function paivitysaika() {
   });
 }
 
+/** Yhteydenotto-osoite kootaan vasta selaimessa, jottei se näy
+    sivun lähdekoodissa valmiina roskapostikeräimille. */
+function naytaYhteystieto() {
+  const kohta = document.getElementById("yhteys");
+  if (!kohta) return;
+  const osoite = ["palaute", "tanssitulokset.fi"].join("@");
+  const linkki = document.createElement("a");
+  linkki.href = "mai" + "lto:" + osoite;
+  linkki.textContent = osoite;
+  kohta.textContent = "Korjattavaa tai kysyttävää aineistossa? ";
+  kohta.appendChild(linkki);
+}
+
 function paivitaLuvut() {
   const n = kysely(`
     SELECT (SELECT COUNT(*) FROM kilpailu) AS kilpailuja,
@@ -1025,6 +1039,7 @@ async function kaynnista() {
     paivitaLuvut();
     aja(nakymat[nakyma]);
     naytaKoot();
+    naytaYhteystieto();
   } catch (virhe) {
     $tila.textContent = "Tietokantaa ei voitu avata.";
     $sisalto.innerHTML =
