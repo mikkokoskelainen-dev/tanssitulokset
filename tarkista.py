@@ -48,6 +48,11 @@ REPO = "mikkokoskelainen-dev/tanssitulokset"
 PAGES_IP = {"185.199.108.153", "185.199.109.153",
             "185.199.110.153", "185.199.111.153"}
 
+# Sahkopostin edelleenohjaus: naiden pitaa olla verkkotunnuksen MX-tietueina.
+# Tyhja joukko tarkoittaa, ettei sahkopostia ole kaytossa.
+MX_ODOTETUT = {"route1.mx.cloudflare.net", "route2.mx.cloudflare.net",
+               "route3.mx.cloudflare.net"}
+
 # Verkkotunnus uusitaan tahan mennessa; muistutus alkaa 60 paivaa ennen.
 TUNNUS_UUSITTAVA = "2027-09-15"
 
@@ -326,6 +331,63 @@ def tarkista_dns():
                + ", ".join(sorted(PAGES_IP)) + ".")
 
 
+def mx_tietueet(tunnus):
+    """Hakee MX-tietueet julkisen DNS-rajapinnan kautta. Ei vaadi
+    komentorivityokaluja, jotka puuttuvat osasta ajoymparistoja.
+    Palauttaa joukon nimia, tai None jos kyselyyn ei saatu vastausta."""
+    for palvelu in ("https://dns.google/resolve",
+                    "https://cloudflare-dns.com/dns-query"):
+        try:
+            req = urllib.request.Request(
+                f"{palvelu}?name={tunnus}&type=MX",
+                headers={"Accept": "application/dns-json",
+                         "User-Agent": "tarkista.py"})
+            with urllib.request.urlopen(req, timeout=20) as v:
+                data = json.load(v)
+        except Exception:
+            continue
+        nimet = set()
+        for vastaus in data.get("Answer") or []:
+            # Muoto: "10 route1.mx.cloudflare.net."
+            osat = str(vastaus.get("data", "")).split()
+            if osat:
+                nimet.add(osat[-1].rstrip(".").lower())
+        return nimet
+    return None
+
+
+def tarkista_mx():
+    """Osoittavatko sahkopostin MX-tietueet oikeaan palveluun?
+
+    Jos verkkotunnuksen MX-tietueet vaihdetaan, sivustolle lahetetty posti
+    ohjautuu vieraalle palvelimelle ilman etta sivustossa nakyy mitaan."""
+    if ohita_verkko or not MX_ODOTETUT:
+        return
+    tunnus = verkkotunnus()
+    if not tunnus:
+        return
+
+    loydetyt = mx_tietueet(tunnus)
+    if loydetyt is None:
+        ohitettu("sahkopostin mx-tietueet", "MX-kyselyyn ei saatu vastausta")
+        return
+    vieraat = loydetyt - MX_ODOTETUT
+    if vieraat:
+        huomio(KRIITTINEN, "Sahkopostin MX-tietueet ovat muuttuneet",
+               f"{tunnus} ohjaa sahkopostin palvelimille "
+               f"{', '.join(sorted(loydetyt))}, joista "
+               f"{', '.join(sorted(vieraat))} ei ole odotettu. Sivustolle "
+               "lahetetty palaute voi paatya vaaraan paikkaan.",
+               "Tarkista MX-tietueet Cloudflaresta. Odotetut: "
+               + ", ".join(sorted(MX_ODOTETUT)) + ".")
+    elif not loydetyt:
+        huomio(HUOMIO, "Sahkopostin MX-tietueet puuttuvat",
+               f"{tunnus} ei ohjaa sahkopostia minnekaan, joten sivulla "
+               "mainittuun osoitteeseen lahetetty posti ei tule perille.",
+               "Ota Cloudflaren Email Routing kayttoon tai poista "
+               "yhteystieto sivuilta.")
+
+
 def tarkista_varmenne():
     """Onko HTTPS-varmenne voimassa ja kuinka kauan?"""
     if ohita_verkko:
@@ -577,6 +639,7 @@ def main():
         ]),
         ("TUOTANTO", [
             ("verkkotunnuksen osoitus", tarkista_dns),
+            ("sahkopostin mx-tietueet", tarkista_mx),
             ("https-varmenne", tarkista_varmenne),
             ("julkaistu sivusto", tarkista_julkaistu_sivusto),
             ("verkkotunnuksen voimassaolo", tarkista_verkkotunnuksen_voimassaolo),
