@@ -41,6 +41,9 @@
      jolloin tekstit linjautuvat myös leveällä ruudulla. */
   .sisus { max-width: 1080px; margin: 0 auto; padding: 18px 20px 14px; }
   h1 { font-size: 19px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+  .ylarivi { display: flex; flex-wrap: wrap; align-items: baseline;
+             justify-content: space-between; gap: 4px 20px; }
+  .sivulinkki { font-size: 14px; color: var(--korostus); white-space: nowrap; }
   #tila { color: var(--hailea); font-size: 13px; margin-top: 3px; }
   .johdanto { max-width: 62ch; margin: 12px 0 0; color: #3d4049; font-size: 14px; }
   .johdanto p { margin: 0 0 6px; }
@@ -106,7 +109,6 @@
     footer { padding: 8px 14px 32px; }
     h1 { font-size: 17px; }
     .johdanto { font-size: 13px; }
-    .johdanto p + p:not(.linkki) { display: none; }   /* kapealla ruudulla vain ensimmäinen kappale, linkki aina */
     #tila { font-size: 12px; }
     .valikko button { padding: 8px 12px; font-size: 14px; }
     input[type="search"], select { width: 100%; min-width: 0; }
@@ -121,17 +123,16 @@
 
 <header>
   <div class="sisus">
-    <h1>Tanssiurheilukilpailutulokset Suomessa</h1>
+    <div class="ylarivi">
+      <h1>Tanssiurheilukilpailutulokset Suomessa</h1>
+      <a class="sivulinkki" href="ulkomaat.html">Suomalaiset ulkomaisissa kilpailuissa →</a>
+    </div>
     <div id="tila">Ladataan tietokantaa…</div>
     <button id="laajenna" hidden></button>
     <div class="johdanto">
-      <p>Suomalaisten vakio- ja latinalaistanssikilpailujen tulokset yhdessä
-         haettavassa muodossa. Mukana ovat myös tuomarien yksittäiset merkinnät,
-         joita pääsee tarkastelemaan kilpailu kerrallaan tai koko kauden ajalta.</p>
-      <p>Voit etsiä parin tai tanssijan kaikki kilpailut, katsoa yksittäisen
-         tuomarin antamat merkinnät ja tuomarointimäärät vuosittain, tai selata
-         kilpailuja ja niiden luokkia.</p>
-      <p class="linkki"><a href="ulkomaat.html">Suomalaiset ulkomaisissa kilpailuissa →</a></p>
+      <p>Suomalaisten vakio- ja latinalaistanssikilpailujen tulokset haettavassa
+         muodossa. Hae parin tai tanssijan kaikki kilpailut, katso tuomarin
+         merkinnät kilpailuittain tai selaa kilpailuja ja tilastoja.</p>
     </div>
   </div>
 </header>
@@ -149,13 +150,10 @@
 
 <footer>
   <p id="kattavuus"></p>
-  <p id="paivitetty"></p>
-  <p id="yhteys"></p>
-  <p id="koot"></p>
-  <p>Aineisto on koottu automaattisesti Suomen Tanssiurheiluliiton julkaisemista
-     kilpailutuloksista ja päivittyy viikoittain. Sivusto ei ole virallinen
-     tulospalvelu: viralliset tulokset löytyvät osoitteesta
+  <p>Lähde: Suomen Tanssiurheiluliiton julkaisemat tulokset. Tämä ei ole
+     virallinen tulospalvelu, viralliset tulokset:
      <a href="https://www.dancesport.fi/lajit/vakio-ja-latinalaistanssit/tulokset/kilpailutulokset/">dancesport.fi</a>.</p>
+  <p id="yhteys"></p>
 </footer>
 
 <script src="vendor/sql-wasm.js"></script>
@@ -194,6 +192,21 @@ function pvmSuomeksi(iso) {
   return `${Number(p)}.${Number(k)}.${v}`;
 }
 
+/** "10.1.–14.11.2026" saman vuoden sisällä, muuten molemmat vuodet. */
+function pvmVali(alku, loppu) {
+  if (!alku) return "";
+  if (alku.slice(0, 4) === (loppu || "").slice(0, 4)) {
+    const [, k, p] = alku.split("-");
+    return `${Number(p)}.${Number(k)}.–${pvmSuomeksi(loppu)}`;
+  }
+  return `${pvmSuomeksi(alku)}–${pvmSuomeksi(loppu)}`;
+}
+
+/** Luku suomalaisittain: 157 529. */
+function luku(n) {
+  return Number(n).toLocaleString("fi-FI");
+}
+
 function taulukko(otsikot, rivit, asetukset = {}) {
   if (!rivit.length) return `<div class="tyhja">${teksti(asetukset.tyhja || "Ei osumia.")}</div>`;
   const thead = otsikot.map(o => `<th>${teksti(o)}</th>`).join("");
@@ -228,8 +241,7 @@ function sidoKlikit(kasittelija) {
 
 function nakymaPari() {
   $ohjaimet.innerHTML = `
-    <input type="search" id="haku" placeholder="Kirjoita nimi, esim. Kajala" autocomplete="off">
-    <span class="vaimea">Hakee sekä tanssijan että parin nimestä</span>`;
+    <input type="search" id="haku" placeholder="Kirjoita nimi, esim. Kajala" autocomplete="off">`;
   $sisalto.innerHTML = `<div class="tyhja">Kirjoita hakukenttään tanssijan tai parin nimi. Haku löytää kaikki kilpailut, joissa nimi esiintyy — myös vanhojen parikokoonpanojen kautta.</div>`;
 
   let viive;
@@ -916,33 +928,18 @@ function megatavuina(n) {
 
 async function taydenKoko() {
   const koko = megatavuina(await tiedostonKoko(KANTA_TAYSI));
-  return koko ? ` (${koko})` : "";
-}
-
-/** Näyttää molempien tietokantojen koot alatunnisteessa. */
-async function naytaKoot() {
-  const [vuosi, taysi] = await Promise.all(
-    [tiedostonKoko(KANTA_VUOSI), tiedostonKoko(KANTA_TAYSI)]);
-  const osat = [];
-  if (vuosi) osat.push(`kuluva vuosi ${megatavuina(vuosi)}`);
-  if (taysi) osat.push(`koko historia ${megatavuina(taysi)}`);
-  if (osat.length) {
-    document.getElementById("koot").textContent =
-      `Ladattavan aineiston koko pakattuna: ${osat.join(", ")}. ` +
-      `Sivu lataa oletuksena vain kuluvan vuoden.`;
-  }
+  return koko ? ` (lataa ${koko})` : "";
 }
 
 async function lataaTaysi(nappi) {
   nappi.disabled = true;
-  nappi.textContent = "Ladataan koko historiaa…";
+  nappi.textContent = "Ladataan kaikkia vuosia…";
   try {
     await avaaKanta(KANTA_TAYSI);
     taysiLadattu = true;
     nappi.hidden = true;
     paivitaLuvut();
     aja(nakymat[nakyma]);
-    naytaKoot();
   } catch (virhe) {
     nappi.disabled = false;
     nappi.textContent = "Lataus epäonnistui — yritä uudelleen";
@@ -998,23 +995,17 @@ function paivitaLuvut() {
     SELECT MIN(pvm) AS alku, MAX(pvm) AS loppu FROM luokka WHERE pvm IS NOT NULL`)[0];
   const tanssijoita = kysely(`SELECT COUNT(*) AS n FROM tanssija`)[0].n;
 
-  $tila.textContent =
-    `${taysiLadattu ? "Koko historia" : "Vuosi " + (vuosiNimi() || "")}`.trim() + ": " +
-    `${n.kilpailuja} kilpailua · ${n.luokkia} luokkaa · ${n.merkintoja} merkintää · ${n.tuomareita} tuomaria`;
+  const otsake = taysiLadattu ? "Näytetään kaikki vuodet"
+                              : `Näytetään vuosi ${vuosiNimi()}`.trim();
+  $tila.textContent = [otsake, `${luku(n.kilpailuja)} kilpailua`,
+    `${luku(n.luokkia)} luokkaa`, `${luku(tanssijoita)} tanssijaa`,
+    `${luku(n.tuomareita)} tuomaria`].join(" · ");
 
-  if (vali.alku) {
-    document.getElementById("kattavuus").textContent =
-      `Näkyvissä olevat tiedot kattavat kilpailut ${pvmSuomeksi(vali.alku)}–${pvmSuomeksi(vali.loppu)}: ` +
-      `${n.kilpailuja} kilpailua, ${n.luokkia} luokkaa, ${tanssijoita} tanssijaa ` +
-      `ja ${n.merkintoja} tuomarimerkintää.`;
-  }
-
+  const osat = [];
+  if (vali.alku) osat.push(`Tulokset ${pvmVali(vali.alku, vali.loppu)}`);
   const haettu = paivitysaika();
-  const $p = document.getElementById("paivitetty");
-  if (haettu && $p) {
-    $p.textContent =
-      `Tiedot haettu viimeksi ${haettu}. Haku ajetaan automaattisesti kerran vuorokaudessa.`;
-  }
+  if (haettu) osat.push(`päivitetty ${haettu} (haku kerran vuorokaudessa)`);
+  document.getElementById("kattavuus").textContent = osat.join(" · ");
 }
 
 async function kaynnista() {
@@ -1027,7 +1018,7 @@ async function kaynnista() {
     const nappi = document.getElementById("laajenna");
     try {
       await avaaKanta(KANTA_VUOSI);
-      nappi.textContent = "Lataa koko historia" + (await taydenKoko());
+      nappi.textContent = "Näytä kaikki vuodet" + (await taydenKoko());
       // painikkeen teksti kertoo mitä nyt puuttuu
       nappi.hidden = false;
       nappi.addEventListener("click", () => lataaTaysi(nappi));
@@ -1038,7 +1029,6 @@ async function kaynnista() {
 
     paivitaLuvut();
     aja(nakymat[nakyma]);
-    naytaKoot();
     naytaYhteystieto();
   } catch (virhe) {
     $tila.textContent = "Tietokantaa ei voitu avata.";

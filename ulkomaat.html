@@ -41,6 +41,9 @@
      jolloin tekstit linjautuvat myös leveällä ruudulla. */
   .sisus { max-width: 1080px; margin: 0 auto; padding: 18px 20px 14px; }
   h1 { font-size: 19px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+  .ylarivi { display: flex; flex-wrap: wrap; align-items: baseline;
+             justify-content: space-between; gap: 4px 20px; }
+  .sivulinkki { font-size: 14px; color: var(--korostus); white-space: nowrap; }
   #tila { color: var(--hailea); font-size: 13px; margin-top: 3px; }
   .johdanto { max-width: 62ch; margin: 12px 0 0; color: #3d4049; font-size: 14px; }
   .johdanto p { margin: 0 0 6px; }
@@ -107,7 +110,6 @@
     footer { padding: 8px 14px 32px; }
     h1 { font-size: 17px; }
     .johdanto { font-size: 13px; }
-    .johdanto p + p { display: none; }   /* kapealla ruudulla vain ensimmäinen kappale */
     #tila { font-size: 12px; }
     .valikko button { padding: 8px 12px; font-size: 14px; }
     input[type="search"], select { width: 100%; min-width: 0; }
@@ -122,13 +124,15 @@
 
 <header>
   <div class="sisus">
-    <h1>Suomalaiset ulkomaisissa kilpailuissa</h1>
+    <div class="ylarivi">
+      <h1>Suomalaiset ulkomaisissa kilpailuissa</h1>
+      <a class="sivulinkki" href="index.html">← Kotimaiset kilpailutulokset</a>
+    </div>
     <div id="tila">Ladataan tietokantaa…</div>
     <div class="johdanto">
       <p>Suomalaisten tanssijoiden sijoitukset ja suomalaisten tuomarien
          tuomaroinnit WDSF:n kansainvälisissä kilpailuissa. Mukana ovat vain
          maakoodilla FIN merkityt henkilöt.</p>
-      <p><a href="index.html">← Kotimaiset kilpailutulokset</a></p>
     </div>
   </div>
 </header>
@@ -144,11 +148,10 @@
 
 <footer>
   <p id="kattavuus"></p>
-  <p id="paivitetty"></p>
+  <p>Lähde: WDSF:n julkaisemat tulokset. Tämä ei ole virallinen tulospalvelu,
+     viralliset tulokset:
+     <a href="https://www.worlddancesport.org/Calendar/Results">worlddancesport.org</a>.</p>
   <p id="yhteys"></p>
-  <p>Tiedot on koottu automaattisesti WDSF:n julkaisemista kilpailutuloksista
-     osoitteesta <a href="https://www.worlddancesport.org/Calendar/Results">worlddancesport.org</a>.
-     Sivusto ei ole virallinen tulospalvelu.</p>
 </footer>
 
 <script src="vendor/sql-wasm.js"></script>
@@ -180,6 +183,21 @@ function pvmSuomeksi(iso) {
   if (!iso) return "";
   const [v, k, p] = iso.split("-");
   return `${Number(p)}.${Number(k)}.${v}`;
+}
+
+/** "10.1.–14.11.2026" saman vuoden sisällä, muuten molemmat vuodet. */
+function pvmVali(alku, loppu) {
+  if (!alku) return "";
+  if (alku.slice(0, 4) === (loppu || "").slice(0, 4)) {
+    const [, k, p] = alku.split("-");
+    return `${Number(p)}.${Number(k)}.–${pvmSuomeksi(loppu)}`;
+  }
+  return `${pvmSuomeksi(alku)}–${pvmSuomeksi(loppu)}`;
+}
+
+/** Luku suomalaisittain: 157 529. */
+function luku(n) {
+  return Number(n).toLocaleString("fi-FI");
 }
 
 function solu(arvo, luokka = "") {
@@ -413,19 +431,14 @@ async function kaynnista() {
     const vali = kysely(`SELECT MIN(pvm) AS alku, MAX(pvm) AS loppu FROM kilpailu
                          WHERE pvm IS NOT NULL`)[0];
 
-    $tila.textContent =
-      `${n.kilpailuja} kilpailua · ${n.luokkia} luokkaa · ${n.sijoituksia} sijoitusta · ` +
-      `${n.tuomarointeja} tuomarointia`;
-    if (vali.alku) {
-      document.getElementById("kattavuus").textContent =
-        `Mukana kilpailut ${pvmSuomeksi(vali.alku)}–${pvmSuomeksi(vali.loppu)}, ` +
-        `joissa oli suomalaisia tanssijoita tai tuomareita.`;
-    }
+    $tila.textContent = [`${luku(n.kilpailuja)} kilpailua`,
+      `${luku(n.luokkia)} luokkaa`, `${luku(n.sijoituksia)} sijoitusta`,
+      `${luku(n.tuomarointeja)} tuomarointia`].join(" · ");
+    const osat = [];
+    if (vali.alku) osat.push(`Tulokset ${pvmVali(vali.alku, vali.loppu)}`);
     const haettu = paivitysaika();
-    if (haettu) {
-      document.getElementById("paivitetty").textContent =
-        `Tiedot haettu viimeksi ${haettu}. Haku ajetaan automaattisesti kerran vuorokaudessa.`;
-    }
+    if (haettu) osat.push(`päivitetty ${haettu} (haku kerran vuorokaudessa)`);
+    document.getElementById("kattavuus").textContent = osat.join(" · ");
     naytaYhteystieto();
     aja(nakymat[nakyma]);
   } catch (virhe) {
