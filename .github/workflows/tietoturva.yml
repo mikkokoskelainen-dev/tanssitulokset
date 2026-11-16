@@ -2,7 +2,8 @@ name: Tietoturvatarkistus
 
 on:
   schedule:
-    - cron: "17 6 * * 1"        # maanantaisin klo 6.17 UTC
+    # Toteutuva aika riippuu GitHubin jonosta, ks. muut workflow-tiedostot.
+    - cron: "17 6 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -17,15 +18,24 @@ jobs:
 
       - name: Aja tarkistus
         id: tarkistus
-        run: python3 tarkista.py
-        continue-on-error: true
-
-      - name: Avaa tai päivitä issue jos löytyi huomautettavaa
-        if: steps.tarkistus.outcome == 'failure'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          OTSIKKO="Tietoturvatarkistus: huomautettavaa $(date +%-d.%-m.%Y)"
+          set +e
+          python3 tarkista.py
+          echo "koodi=$?" >> "$GITHUB_OUTPUT"
+
+      # 0 = kaikki kunnossa, 1 = huomautettavaa, 2 = kriittinen löydös
+      - name: Avaa tai päivitä issue
+        if: steps.tarkistus.outputs.koodi != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ steps.tarkistus.outputs.koodi }}" = "2" ]; then
+            OTSIKKO="🔴 Tietoturvatarkistus: kriittinen löydös $(date +%-d.%-m.%Y)"
+          else
+            OTSIKKO="Tietoturvatarkistus: huomautettavaa $(date +%-d.%-m.%Y)"
+          fi
           AVOIN=$(gh issue list --label tietoturva --state open \
                     --json number --jq '.[0].number')
           if [ -n "$AVOIN" ]; then
@@ -36,8 +46,11 @@ jobs:
               --body-file loydokset.md --label tietoturva
           fi
 
-      - name: Merkitse ajo epäonnistuneeksi
-        if: steps.tarkistus.outcome == 'failure'
+      # Vain kriittinen löydös kaataa ajon, jolloin GitHub lähettää sähköpostin.
+      # Pienemmistä riittää issue, jottei viikoittainen versiohuomautus
+      # tuota turhaa hälytystä.
+      - name: Merkitse ajo epäonnistuneeksi kriittisestä löydöksestä
+        if: steps.tarkistus.outputs.koodi == '2'
         run: |
-          echo "::error::Tietoturvatarkistus löysi huomautettavaa — katso repon issuet."
+          echo "::error::Tietoturvatarkistus löysi kriittisen puutteen — katso repon issuet."
           exit 1
