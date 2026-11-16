@@ -494,20 +494,106 @@ function nakymaKilpailu() {
   });
 }
 
+/** Luokan laji sen nimen perusteella. Soolotanssijalla sama nimi toistuu
+    parikentässä kahdesti, joten luokan nimi on luotettavampi tunnistin. */
+function luokanLaji(nimi) {
+  const n = (nimi || "").toLowerCase();
+  if (n.includes("soolo")) return "soolo";
+  if (n.includes("joukkue")) return "joukkue";
+  return "pari";
+}
+
 function naytaKilpailu(id) {
   const luokat = kysely(`
     SELECT l.id, l.nro, l.nimi, l.pvm,
            (SELECT COUNT(*) FROM pari p WHERE p.luokka_id = l.id) AS pareja
     FROM luokka l WHERE l.kilpailu_id = ? ORDER BY l.nro`, [id]);
 
-  $sisalto.innerHTML = taulukko(
-    ["Nro", "Luokka", "Päivä", "Pareja"],
-    luokat.map(l => [
-      solu(l.nro, "luku"), solu(l.nimi), solu(pvmSuomeksi(l.pvm), "pvm"), solu(l.pareja, "luku"),
-    ]),
-    { klikki: true, tyhja: "Tässä kilpailussa ei ole luettuja luokkia." });
+  // Kaikki osallistujat kerralla: summat ja seurajakauma lasketaan näistä
+  const osallistujat = kysely(`
+    SELECT p.nimi, p.seura, l.nimi AS luokka
+    FROM pari p JOIN luokka l ON l.id = p.luokka_id
+    WHERE l.kilpailu_id = ?`, [id]);
 
-  sidoKlikit(i => naytaLuokka(luokat[i], id));
+  // Eri osallistujat lajeittain (sama pari voi tanssia monessa luokassa)
+  const eri = { pari: new Set(), soolo: new Set(), joukkue: new Set() };
+  const startit = { pari: 0, soolo: 0, joukkue: 0 };
+  const seurat = {};
+
+  osallistujat.forEach(o => {
+    const laji = luokanLaji(o.luokka);
+    eri[laji].add(o.nimi);
+    startit[laji] += 1;
+    const seura = o.seura || "(ei seuraa)";
+    if (!seurat[seura]) {
+      seurat[seura] = { pari: new Set(), soolo: new Set(), joukkue: new Set(), startit: 0 };
+    }
+    seurat[seura][laji].add(o.nimi);
+    seurat[seura].startit += 1;
+  });
+
+  const yht = startit.pari + startit.soolo + startit.joukkue;
+  const osat = [`${luokat.length} luokkaa`];
+  if (eri.pari.size)    osat.push(`${eri.pari.size} eri paria`);
+  if (eri.soolo.size)   osat.push(`${eri.soolo.size} eri soolotanssijaa`);
+  if (eri.joukkue.size) osat.push(`${eri.joukkue.size} eri joukkuetta`);
+  if (yht) osat.push(`${yht} osallistumista`);
+
+  // --- Luokkalista, yhteissumma viimeisellä rivillä ---
+  const luokkarivit = luokat.map(l => [
+    solu(l.nro, "luku"), solu(l.nimi), solu(pvmSuomeksi(l.pvm), "pvm"),
+    solu(l.pareja, "luku"),
+  ]);
+  if (luokat.length) {
+    luokkarivit.push([
+      solu(""), solu("Yhteensä", "vaimea"), solu(""),
+      solu(luokat.reduce((n, l) => n + l.pareja, 0), "sija luku"),
+    ]);
+  }
+
+  // --- Seurat, eniten osallistujia ensin ---
+  const seurarivit = Object.entries(seurat)
+    .map(([nimi, d]) => ({
+      nimi,
+      parit: d.pari.size, soolot: d.soolo.size, joukkueet: d.joukkue.size,
+      startit: d.startit,
+      yhteensa: d.pari.size + d.soolo.size + d.joukkue.size,
+    }))
+    .sort((a, b) => b.yhteensa - a.yhteensa || b.startit - a.startit
+                    || a.nimi.localeCompare(b.nimi, "fi"));
+
+  const naytaJoukkueet = eri.joukkue.size > 0;
+  const seuraotsikot = ["Seura", "Pareja", "Sooloja"]
+    .concat(naytaJoukkueet ? ["Joukkueita"] : [])
+    .concat(["Osallistumisia"]);
+
+  const seurataulukko = seurarivit.map(s => [
+    solu(s.nimi),
+    solu(s.parit || "·", s.parit ? "luku" : "luku vaimea"),
+    solu(s.soolot || "·", s.soolot ? "luku" : "luku vaimea"),
+  ].concat(naytaJoukkueet
+      ? [solu(s.joukkueet || "·", s.joukkueet ? "luku" : "luku vaimea")] : [])
+   .concat([solu(s.startit, "sija luku")]));
+
+  if (seurarivit.length) {
+    seurataulukko.push([
+      solu("Yhteensä", "vaimea"),
+      solu(eri.pari.size || "·", eri.pari.size ? "sija luku" : "luku vaimea"),
+      solu(eri.soolo.size || "·", eri.soolo.size ? "sija luku" : "luku vaimea"),
+    ].concat(naytaJoukkueet ? [solu(eri.joukkue.size, "sija luku")] : [])
+     .concat([solu(yht, "sija luku")]));
+  }
+
+  $sisalto.innerHTML =
+    `<h2>Luokat <span class="vaimea">· ${osat.join(" · ")}</span></h2>` +
+    taulukko(["Nro", "Luokka", "Päivä", "Osallistujia"], luokkarivit,
+             { klikki: true, tyhja: "Tässä kilpailussa ei ole luettuja luokkia." }) +
+    `<h2>Osallistujat seuroittain <span class="vaimea">· ${seurarivit.length} seuraa` +
+    `${eri.soolo.size ? ", soolotanssijat omana sarakkeenaan" : ""}</span></h2>` +
+    taulukko(seuraotsikot, seurataulukko, { tyhja: "Osallistujia ei löytynyt." });
+
+  // Viimeinen luokkarivi on yhteissumma, ei luokka
+  sidoKlikit(i => { if (i < luokat.length) naytaLuokka(luokat[i], id); });
 }
 
 function naytaLuokka(luokka, kilpailuId) {
