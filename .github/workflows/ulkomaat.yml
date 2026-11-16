@@ -1,7 +1,8 @@
 name: Lataa ulkomaantulokset
 on:
   schedule:
-    - cron: "43 4 * * *"          # joka yö klo 4.43 UTC, tunti kotimaisen ajon jälkeen
+    # Tunti kotimaisen ajon jalkeen; toteutuva aika riippuu GitHubin jonosta.
+    - cron: "43 4 * * *"
   workflow_dispatch:
     inputs:
       alku:

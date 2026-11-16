@@ -1,7 +1,9 @@
 name: Lataa tulokset
 on:
   schedule:
-    - cron: "37 3 * * *"   # joka yö klo 3.37 UTC (Suomen aikaa 5.37)
+    # GitHub ajaa ajastetut tyot ilmaisvarastossa jonon mukaan: tama
+    # kaynnistyy kaytannossa 7-8 tuntia myohemmin kuin kello nayttaa.
+    - cron: "37 3 * * *"
   workflow_dispatch:
     inputs:
       alku:
